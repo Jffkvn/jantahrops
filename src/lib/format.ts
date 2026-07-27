@@ -1,7 +1,7 @@
-import { formatInTimeZone, toZonedTime } from 'date-fns-tz';
+import { formatInTimeZone } from 'date-fns-tz';
 import { formatDistanceToNow } from 'date-fns';
 
-export const KAMPALA_TZ = 'Africa/Kampala';
+export const APP_TIMEZONE = 'Africa/Kampala';
 
 /**
  * Format bigint amount in whole Ugandan shillings.
@@ -14,25 +14,34 @@ export function formatUGX(amount: bigint): string {
 
 /**
  * Format bigint amount in compact form for tight spaces.
- * Example: 4500000n -> "UGX 4.5M"
+ * Truncates toward zero without rounding into the next magnitude.
+ * Example: 999_999n -> "UGX 999.9K", 4_500_000n -> "UGX 4.5M"
  */
 export function formatUGXCompact(amount: bigint): string {
   const absAmount = amount < 0n ? -amount : amount;
   const sign = amount < 0n ? '-' : '';
 
   if (absAmount >= 1_000_000_000n) {
-    const val = Number(absAmount) / 1_000_000_000;
-    const formatted = val % 1 === 0 ? val.toFixed(0) : val.toFixed(1);
+    const whole = absAmount / 1_000_000_000n;
+    const remainder = absAmount % 1_000_000_000n;
+    const tenths = (remainder * 10n) / 1_000_000_000n;
+    const formatted = tenths > 0n ? `${whole}.${tenths}` : `${whole}`;
     return `UGX ${sign}${formatted}B`;
   }
+
   if (absAmount >= 1_000_000n) {
-    const val = Number(absAmount) / 1_000_000;
-    const formatted = val % 1 === 0 ? val.toFixed(0) : val.toFixed(1);
+    const whole = absAmount / 1_000_000n;
+    const remainder = absAmount % 1_000_000n;
+    const tenths = (remainder * 10n) / 1_000_000n;
+    const formatted = tenths > 0n ? `${whole}.${tenths}` : `${whole}`;
     return `UGX ${sign}${formatted}M`;
   }
+
   if (absAmount >= 1_000n) {
-    const val = Number(absAmount) / 1_000;
-    const formatted = val % 1 === 0 ? val.toFixed(0) : val.toFixed(1);
+    const whole = absAmount / 1_000n;
+    const remainder = absAmount % 1_000n;
+    const tenths = (remainder * 10n) / 1_000n;
+    const formatted = tenths > 0n ? `${whole}.${tenths}` : `${whole}`;
     return `UGX ${sign}${formatted}K`;
   }
 
@@ -43,6 +52,8 @@ export function formatUGXCompact(amount: bigint): string {
  * Parse string into whole UGX bigint or null if invalid/decimal/negative.
  */
 export function parseUGX(input: string): bigint | null {
+  if (typeof input !== 'string') return null;
+
   let cleaned = input.trim();
   if (!cleaned) return null;
 
@@ -91,7 +102,7 @@ function toDate(d: Date | string): Date {
  */
 export function formatDate(d: Date | string): string {
   const dateObj = toDate(d);
-  return formatInTimeZone(dateObj, KAMPALA_TZ, 'd MMM yyyy');
+  return formatInTimeZone(dateObj, APP_TIMEZONE, 'd MMM yyyy');
 }
 
 /**
@@ -100,15 +111,13 @@ export function formatDate(d: Date | string): string {
  */
 export function formatDateTime(d: Date | string): string {
   const dateObj = toDate(d);
-  return formatInTimeZone(dateObj, KAMPALA_TZ, 'd MMM yyyy, HH:mm');
+  return formatInTimeZone(dateObj, APP_TIMEZONE, 'd MMM yyyy, HH:mm');
 }
 
 /**
- * Format relative time in Africa/Kampala time zone.
+ * Format relative time (timezone independent).
  * Example: "3 days ago", "in 2 hours"
  */
 export function formatRelative(d: Date | string): string {
-  const dateObj = toDate(d);
-  const zonedDate = toZonedTime(dateObj, KAMPALA_TZ);
-  return formatDistanceToNow(zonedDate, { addSuffix: true });
+  return formatDistanceToNow(toDate(d), { addSuffix: true });
 }

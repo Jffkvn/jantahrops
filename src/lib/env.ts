@@ -1,10 +1,12 @@
 import { z } from 'zod';
 
+const appEnvEnum = z.enum(['development', 'staging', 'production']);
+
 const envSchema = z.object({
   VITE_SUPABASE_URL: z.string().url(),
   VITE_SUPABASE_ANON_KEY: z.string().min(1),
   VITE_APP_URL: z.string().url().default('http://localhost:5180'),
-  VITE_APP_ENV: z.enum(['development', 'staging', 'production']).default('development'),
+  VITE_APP_ENV: appEnvEnum.default('development'),
 });
 
 function parseEnv() {
@@ -36,11 +38,19 @@ function parseEnv() {
       `[env.ts] Missing or invalid environment variables: ${missingKeys.join(', ')}. Please set them in .env.local`,
     );
 
+    const safeUrl = z.string().url().safeParse(rawUrl).success ? rawUrl : '';
+    const safeAppUrl = z.string().url().safeParse(rawAppUrl).success
+      ? rawAppUrl
+      : 'http://localhost:5180';
+    const safeAppEnv = appEnvEnum.safeParse(rawAppEnv).success
+      ? (rawAppEnv as z.infer<typeof appEnvEnum>)
+      : 'development';
+
     return Object.freeze({
-      VITE_SUPABASE_URL: rawEnv.VITE_SUPABASE_URL,
-      VITE_SUPABASE_ANON_KEY: rawEnv.VITE_SUPABASE_ANON_KEY,
-      VITE_APP_URL: rawEnv.VITE_APP_URL,
-      VITE_APP_ENV: rawEnv.VITE_APP_ENV,
+      VITE_SUPABASE_URL: safeUrl,
+      VITE_SUPABASE_ANON_KEY: rawKey,
+      VITE_APP_URL: safeAppUrl,
+      VITE_APP_ENV: safeAppEnv,
     });
   }
 
