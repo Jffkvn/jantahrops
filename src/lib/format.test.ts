@@ -80,8 +80,9 @@ describe('Date Formatters', () => {
   });
 });
 
-describe('formatRelative (Deterministic & Timezone Independent)', () => {
+describe('formatRelative', () => {
   const now = new Date('2026-07-27T12:00:00Z');
+  const currentTZ = process.env.TZ ?? 'unset';
 
   beforeEach(() => {
     vi.useFakeTimers();
@@ -92,19 +93,27 @@ describe('formatRelative (Deterministic & Timezone Independent)', () => {
     vi.useRealTimers();
   });
 
-  it('behaves identically regardless of host timezone', () => {
+  it(`is timezone independent (run under TZ=UTC and TZ=Africa/Kampala via test:tz) [active TZ: ${currentTZ}]`, () => {
     const oneHourPast = new Date(now.getTime() - 60 * 60 * 1000);
     const oneHourFuture = new Date(now.getTime() + 60 * 60 * 1000);
     const threeDaysPast = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000);
     const thirtySecondsPast = new Date(now.getTime() - 30 * 1000);
 
     const past1h = formatRelative(oneHourPast);
-    expect(past1h).toContain('ago');
-    expect(past1h).not.toContain('in ');
+    expect(past1h, `Failed under TZ=${currentTZ}: expected 1h past to contain 'ago'`).toContain(
+      'ago',
+    );
+    expect(past1h, `Failed under TZ=${currentTZ}: 1h past must not contain 'in '`).not.toContain(
+      'in ',
+    );
 
     const fut1h = formatRelative(oneHourFuture);
-    expect(fut1h).toContain('in ');
-    expect(fut1h).not.toContain('ago');
+    expect(fut1h, `Failed under TZ=${currentTZ}: expected 1h future to contain 'in '`).toContain(
+      'in ',
+    );
+    expect(fut1h, `Failed under TZ=${currentTZ}: 1h future must not contain 'ago'`).not.toContain(
+      'ago',
+    );
 
     expect(formatRelative(threeDaysPast)).toBe('3 days ago');
     expect(formatRelative(thirtySecondsPast)).toContain('ago');

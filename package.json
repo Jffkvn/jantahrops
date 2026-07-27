@@ -13,9 +13,10 @@
     "format:check": "prettier --check .",
     "typecheck": "tsc -b --noEmit",
     "test": "vitest run",
+    "test:tz": "TZ=UTC vitest run && TZ=Africa/Kampala vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "check": "npm run typecheck && npm run lint && npm run test"
+    "check": "npm run typecheck && npm run lint && npm run test:tz"
   },
   "dependencies": {
     "@hookform/resolvers": "^4.1.0",
