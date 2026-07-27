@@ -2,6 +2,6 @@
   <path
     d="M 98.385 28.84 L 98.385 1.615 L 1.615 1.615 L 1.615 98.385
        L 98.385 98.385 L 98.385 71.16"
-    stroke="#006C8B" stroke-width="3.23"
+    stroke="currentColor" stroke-width="3.23"
     stroke-linecap="butt" stroke-linejoin="miter" fill="none" />
 </svg>

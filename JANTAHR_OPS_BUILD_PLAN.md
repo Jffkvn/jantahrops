@@ -599,7 +599,7 @@ colours permitted, and only inside small chips.
 
 --ink:               #0D2B37   /* primary text — near-black, teal cast */
 --ink-secondary:     #48626F   /* labels, secondary text */
---ink-muted:         #7A919D   /* placeholders, timestamps */
+--ink-muted:         #5C7380   /* placeholders, timestamps */
 
 --primary:           #0B5978   /* buttons, active nav, links */
 --primary-hover:     #084A64
@@ -610,7 +610,7 @@ colours permitted, and only inside small chips.
 --accent:            #F2B33D   /* amber — highlight cards, key CTA, charts */
 --accent-hover:      #E0A22C
 --accent-soft:       #FDF4E2
---accent-ink:        #6B4A05   /* text on amber surfaces */
+--accent-ink:        #5A3E04   /* text on amber surfaces */
 
 --success:  #15855A    --success-soft:  #E4F3EB
 --warning:  #B87309    --warning-soft:  #FBF1E0

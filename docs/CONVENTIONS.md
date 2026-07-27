@@ -20,3 +20,7 @@ This document serves as a strict checklist for all development sessions.
   - Configurable pipelines
   - Payment gateway
   - LMS framework
+
+## Brand Assets
+
+- TODO: public/brand full-lockup logos are PNG pending vector source from Dora. The mark (logo-mark.svg) is true vector.

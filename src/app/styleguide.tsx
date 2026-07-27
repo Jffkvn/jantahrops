@@ -116,7 +116,7 @@ export function StyleguidePage() {
           <div className="flex flex-col gap-4 border-b border-border pb-6 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <div className="flex items-center gap-3">
-                <img src="/brand/logo-mark-color.svg" alt="Mark" className="h-8 w-8" />
+                <img src="/brand/logo-mark.svg" alt="JantaHR Mark" className="h-8 w-8 text-primary" />
                 <h1 className="font-display text-3xl font-bold tracking-tight text-ink">
                   JantaHR Ops Design System
                 </h1>
@@ -140,7 +140,7 @@ export function StyleguidePage() {
                 { name: 'Sunken', varName: 'bg-surface-sunken', hex: 'ECF0F3 / 16272F' },
                 { name: 'Border', varName: 'bg-border', hex: 'E1E7EC / 21363F' },
                 { name: 'Ink Primary', varName: 'bg-ink', hex: '0D2B37 / E7EEF2' },
-                { name: 'Ink Muted', varName: 'bg-ink-muted', hex: '7A919D / 6E8896' },
+                { name: 'Ink Muted', varName: 'bg-ink-muted', hex: '5C7380 / 6E8896' },
                 { name: 'Primary Deep', varName: 'bg-primary', hex: '0B5978 / 2C8FB5' },
                 { name: 'Primary Soft', varName: 'bg-primary-soft', hex: 'E6EFF3 / 12313F' },
                 { name: 'Amber Accent', varName: 'bg-highlight', hex: 'F2B33D / F5C05A' },

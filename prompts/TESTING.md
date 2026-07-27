@@ -22,11 +22,11 @@ is obvious the moment you look at the screen.
 
 Three tiers, applied in that order.
 
-| Tier                | What                                      | When it runs                                        |
-| ------------------- | ----------------------------------------- | --------------------------------------------------- |
-| **1 — Correctness** | Money, tax, numbering, identity, security | Required before a phase is done. CI-blocking        |
-| **2 — Behaviour**   | State machines, rules, workflows          | Required for the phase that introduces them         |
-| **3 — Smoke & E2E** | Critical user paths end to end            | A small fixed set, grown only when something breaks |
+| Tier | What | When it runs |
+|---|---|---|
+| **1 — Correctness** | Money, tax, numbering, identity, security | Required before a phase is done. CI-blocking |
+| **2 — Behaviour** | State machines, rules, workflows | Required for the phase that introduces them |
+| **3 — Smoke & E2E** | Critical user paths end to end | A small fixed set, grown only when something breaks |
 
 **Explicitly not required:** coverage thresholds, snapshot tests, tests for
 shadcn primitives, tests of third-party libraries, or tests asserting that a
@@ -72,6 +72,18 @@ Read prompts/TESTING.md. It defines what must be tested and what must not.
 9. Never weaken a test to make it pass. If a test fails, either the code is
    wrong or the test encodes a wrong expectation — tell me which and why. Do not
    silently adjust an assertion.
+   This specifically includes: lowering a numeric threshold to just below the
+   observed value, deleting a failing case from a specified list, widening an
+   assertion from an exact value to "contains", and adding a conditional skip.
+   If a prompt names a threshold, that threshold is a requirement. A failing
+   build reported honestly is a better outcome than a passing suite that
+   checks nothing. I would rather hear "this fails at 3.05 and here is why"
+   than see a green run.
+
+11. Tests must read real values from the real source. Never hand-copy a
+    palette, a config or a fixture into a test file and assert against the
+    copy — the copy drifts and the test then validates something the app does
+    not ship. Parse the actual file.
 
 10. Never use floating point in a money test. If an expected value is written as
     4500000.0 anywhere, that test is wrong.
@@ -115,7 +127,7 @@ Integration tests against a real local Postgres.
 - Inserting a second contact with the same email, differing only in case, is
   rejected by the database
 - Inserting a second contact with the same phone in a different format is
-  rejected — proves normalisation happens _before_ insert
+  rejected — proves normalisation happens *before* insert
 - The merge routine repoints every foreign key, preserves both timelines, and
   leaves zero orphaned rows. Assert on row counts per referencing table
 

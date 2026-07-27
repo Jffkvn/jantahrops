@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
 
 function hexToRgb(hex: string): [number, number, number] {
-  const cleanHex = hex.replace('#', '');
+  const cleanHex = hex.replace('#', '').trim();
   const num = parseInt(cleanHex, 16);
   return [(num >> 16) & 255, (num >> 8) & 255, num & 255];
 }
@@ -22,66 +24,70 @@ export function getContrastRatio(hex1: string, hex2: string): number {
   return (max + 0.05) / (min + 0.05);
 }
 
-const lightTokens = {
-  canvas: '#F4F6F8',
-  surface: '#FFFFFF',
-  ink: '#0D2B37',
-  inkSecondary: '#48626F',
-  inkMuted: '#7A919D',
-  primary: '#0B5978',
-  primaryInk: '#FFFFFF',
-  highlight: '#F2B33D',
-  highlightSoft: '#FDF4E2',
-  highlightInk: '#6B4A05',
-};
+export function parseCssTokens(cssContent: string) {
+  const parseBlock = (blockStr: string) => {
+    const tokens: Record<string, string> = {};
+    const regex = /--([a-z0-9-]+)\s*:\s*(#[0-9a-fA-F]{3,8})/g;
+    let match;
+    while ((match = regex.exec(blockStr)) !== null) {
+      if (match[1] && match[2]) {
+        tokens[match[1]] = match[2].toUpperCase();
+      }
+    }
+    return tokens;
+  };
 
-const darkTokens = {
-  canvas: '#0A141A',
-  surface: '#101E26',
-  ink: '#E7EEF2',
-  inkSecondary: '#9DB4C0',
-  inkMuted: '#6E8896',
-  primary: '#2C8FB5',
-  primaryInk: '#0A141A',
-  highlight: '#F5C05A',
-  highlightSoft: '#2E2413',
-  highlightInk: '#F5C05A',
-};
+  const rootMatch = cssContent.match(/:root\s*\{([^}]+)\}/);
+  const darkMatch = cssContent.match(/\.dark\s*\{([^}]+)\}/);
 
-describe('WCAG Contrast Ratios (Light Mode)', () => {
+  const lightTokens = rootMatch ? parseBlock(rootMatch[1]!) : {};
+  const darkTokens = darkMatch ? parseBlock(darkMatch[1]!) : {};
+
+  return { lightTokens, darkTokens };
+}
+
+const tokensCssPath = path.resolve(__dirname, './tokens.css');
+const cssContent = fs.readFileSync(tokensCssPath, 'utf8');
+const { lightTokens, darkTokens } = parseCssTokens(cssContent);
+
+describe('WCAG Contrast Ratios (Light Mode - Parsed from tokens.css)', () => {
   const pairs = [
-    { name: 'ink / canvas', fg: lightTokens.ink, bg: lightTokens.canvas, min: 4.5 },
-    { name: 'ink / surface', fg: lightTokens.ink, bg: lightTokens.surface, min: 4.5 },
-    { name: 'ink-secondary / canvas', fg: lightTokens.inkSecondary, bg: lightTokens.canvas, min: 4.5 },
-    { name: 'ink-muted / canvas', fg: lightTokens.inkMuted, bg: lightTokens.canvas, min: 3.0 },
-    { name: 'ink-muted / surface', fg: lightTokens.inkMuted, bg: lightTokens.surface, min: 3.0 },
-    { name: 'primary-ink / primary', fg: lightTokens.primaryInk, bg: lightTokens.primary, min: 4.5 },
-    { name: 'highlight-ink / highlight', fg: lightTokens.highlightInk, bg: lightTokens.highlight, min: 3.0 },
-    { name: 'highlight-ink / highlight-soft', fg: lightTokens.highlightInk, bg: lightTokens.highlightSoft, min: 4.5 },
+    { name: 'ink / canvas', fg: lightTokens['ink']!, bg: lightTokens['canvas']!, min: 4.5 },
+    { name: 'ink / surface', fg: lightTokens['ink']!, bg: lightTokens['surface']!, min: 4.5 },
+    { name: 'ink-secondary / canvas', fg: lightTokens['ink-secondary']!, bg: lightTokens['canvas']!, min: 4.5 },
+    { name: 'ink-muted / canvas', fg: lightTokens['ink-muted']!, bg: lightTokens['canvas']!, min: 4.5 },
+    { name: 'ink-muted / surface', fg: lightTokens['ink-muted']!, bg: lightTokens['surface']!, min: 4.5 },
+    { name: 'primary-ink / primary', fg: lightTokens['primary-ink']!, bg: lightTokens['primary']!, min: 4.5 },
+    { name: 'highlight-ink / highlight', fg: lightTokens['highlight-ink']!, bg: lightTokens['highlight']!, min: 4.5 },
+    { name: 'highlight-ink / highlight-soft', fg: lightTokens['highlight-ink']!, bg: lightTokens['highlight-soft']!, min: 4.5 },
   ];
 
   for (const { name, fg, bg, min } of pairs) {
-    it(`asserts ${name} contrast ratio >= ${min}:1`, () => {
+    it(`asserts ${name} (${fg} on ${bg}) contrast ratio >= ${min}:1`, () => {
+      expect(fg).toBeDefined();
+      expect(bg).toBeDefined();
       const ratio = getContrastRatio(fg, bg);
       expect(ratio).toBeGreaterThanOrEqual(min);
     });
   }
 });
 
-describe('WCAG Contrast Ratios (Dark Mode)', () => {
+describe('WCAG Contrast Ratios (Dark Mode - Parsed from tokens.css)', () => {
   const pairs = [
-    { name: 'ink / canvas', fg: darkTokens.ink, bg: darkTokens.canvas, min: 4.5 },
-    { name: 'ink / surface', fg: darkTokens.ink, bg: darkTokens.surface, min: 4.5 },
-    { name: 'ink-secondary / canvas', fg: darkTokens.inkSecondary, bg: darkTokens.canvas, min: 4.5 },
-    { name: 'ink-muted / canvas', fg: darkTokens.inkMuted, bg: darkTokens.canvas, min: 3.0 },
-    { name: 'ink-muted / surface', fg: darkTokens.inkMuted, bg: darkTokens.surface, min: 3.0 },
-    { name: 'primary-ink / primary', fg: darkTokens.primaryInk, bg: darkTokens.primary, min: 4.5 },
-    { name: 'primary-ink / highlight', fg: darkTokens.primaryInk, bg: darkTokens.highlight, min: 4.5 },
-    { name: 'highlight-ink / highlight-soft', fg: darkTokens.highlightInk, bg: darkTokens.highlightSoft, min: 4.5 },
+    { name: 'ink / canvas', fg: darkTokens['ink']!, bg: darkTokens['canvas']!, min: 4.5 },
+    { name: 'ink / surface', fg: darkTokens['ink']!, bg: darkTokens['surface']!, min: 4.5 },
+    { name: 'ink-secondary / canvas', fg: darkTokens['ink-secondary']!, bg: darkTokens['canvas']!, min: 4.5 },
+    { name: 'ink-muted / canvas', fg: darkTokens['ink-muted']!, bg: darkTokens['canvas']!, min: 4.5 },
+    { name: 'ink-muted / surface', fg: darkTokens['ink-muted']!, bg: darkTokens['surface']!, min: 4.5 },
+    { name: 'primary-ink / primary', fg: darkTokens['primary-ink']!, bg: darkTokens['primary']!, min: 4.5 },
+    { name: 'primary-ink / highlight', fg: darkTokens['primary-ink']!, bg: darkTokens['highlight']!, min: 4.5 },
+    { name: 'highlight-ink / highlight-soft', fg: darkTokens['highlight-ink']!, bg: darkTokens['highlight-soft']!, min: 4.5 },
   ];
 
   for (const { name, fg, bg, min } of pairs) {
-    it(`asserts ${name} contrast ratio >= ${min}:1`, () => {
+    it(`asserts ${name} (${fg} on ${bg}) contrast ratio >= ${min}:1`, () => {
+      expect(fg).toBeDefined();
+      expect(bg).toBeDefined();
       const ratio = getContrastRatio(fg, bg);
       expect(ratio).toBeGreaterThanOrEqual(min);
     });
