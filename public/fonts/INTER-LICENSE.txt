@@ -1,0 +1,5 @@
+SIL Open Font License (OFL)
+Font: Inter Variable
+Author: Rasmus Andersson
+Usage: Free for personal and commercial use.
+Website: https://rsms.me/inter/

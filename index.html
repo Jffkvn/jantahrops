@@ -2,9 +2,24 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <link rel="icon" type="image/svg+xml" href="/brand/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>JantaHR Ops</title>
+    <script>
+      (function () {
+        try {
+          var key = 'jantahr-ops-theme';
+          var stored = localStorage.getItem(key);
+          var systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+          var theme = stored || 'system';
+          if (theme === 'dark' || (theme === 'system' && systemDark)) {
+            document.documentElement.classList.add('dark');
+          } else {
+            document.documentElement.classList.remove('dark');
+          }
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

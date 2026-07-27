@@ -1,21 +1,63 @@
-@import 'tailwindcss';
+@import "tailwindcss";
+@import "./tokens.css";
 
-/*
- * @theme block
- * Prompt 0.2 fills this token set.
- */
-@theme {
+/* Self-Hosted Fonts */
+@font-face {
+  font-family: 'Satoshi';
+  src: url('/fonts/Satoshi-Variable.woff2') format('woff2-variations'),
+       url('/fonts/Satoshi-Variable.woff2') format('woff2');
+  font-weight: 300 900;
+  font-display: swap;
+  font-style: normal;
 }
 
-/* Minimal CSS reset */
-*,
-::before,
-::after {
+@font-face {
+  font-family: 'Inter';
+  src: url('/fonts/Inter-Variable.woff2') format('woff2-variations'),
+       url('/fonts/Inter-Variable.woff2') format('woff2');
+  font-weight: 100 900;
+  font-display: swap;
+  font-style: normal;
+}
+
+/* Minimal CSS reset & Global Typography Rules */
+*, ::before, ::after {
   box-sizing: border-box;
 }
 
 body {
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  color: var(--color-ink);
+  background-color: var(--color-canvas);
   margin: 0;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+h1, .text-2xl, .text-3xl {
+  letter-spacing: -0.03em;
+}
+
+/* Global Tabular Numerals for Numbers and Money */
+.num,
+table td,
+input[type='text'].num,
+input[type='number'] {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
