@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Logo } from '@/components/logo';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { StatusChip } from '@/components/status-chip';
 import { EmptyState } from '@/components/empty-state';
@@ -79,7 +80,7 @@ export function StyleguidePage() {
   const [switchChecked, setSwitchChecked] = useState(true);
 
   const sampleColumns: Column<SampleRow>[] = [
-    { header: 'ID', accessorKey: 'id', className: 'w-20 font-mono text-xs' },
+    { header: 'ID', accessorKey: 'id', className: 'w-20 text-xs text-ink-muted' },
     {
       header: 'Name',
       cell: (item) => (
@@ -116,7 +117,7 @@ export function StyleguidePage() {
           <div className="flex flex-col gap-4 border-b border-border pb-6 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <div className="flex items-center gap-3">
-                <img src="/brand/logo-mark.svg" alt="JantaHR Mark" className="h-8 w-8 text-primary" />
+                <Logo className="text-primary" size={32} />
                 <h1 className="font-display text-3xl font-bold tracking-tight text-ink">
                   JantaHR Ops Design System
                 </h1>
@@ -148,7 +149,7 @@ export function StyleguidePage() {
                 { name: 'Warning Soft', varName: 'bg-warning-soft', hex: 'FBF1E0 / 2E2413' },
                 { name: 'Danger Soft', varName: 'bg-danger-soft', hex: 'FAE9E7 / 2E1A18' },
               ].map((swatch) => (
-                <div key={swatch.name} className="rounded-card border border-border bg-surface p-3 shadow-xs">
+                <div key={swatch.name} className="rounded-card border border-border bg-surface p-3">
                   <div className={`h-12 w-full rounded-control border border-border ${swatch.varName}`} />
                   <p className="mt-2 text-xs font-semibold text-ink">{swatch.name}</p>
                   <p className="text-[10px] text-ink-muted">{swatch.hex}</p>
@@ -180,7 +181,7 @@ export function StyleguidePage() {
               <div>
                 <p className="text-xs text-ink-muted mb-2">Tabular Numerals Alignment Demo (.num)</p>
                 <div className="inline-block rounded-control border border-border bg-surface-sunken p-4">
-                  <div className="num font-mono text-sm space-y-1">
+                  <div className="num text-sm space-y-1">
                     <p className="text-right">UGX 1,000,000</p>
                     <p className="text-right">UGX 4,500,000</p>
                     <p className="text-right">UGX 999,999,999</p>
@@ -293,7 +294,7 @@ export function StyleguidePage() {
                   headline="No leads found"
                   description="Create a new lead or import contacts to begin tracking follow-ups."
                   action={
-                    <Button variant="highlight">
+                    <Button variant="primary">
                       <Plus className="mr-1.5 h-4 w-4" /> Add First Lead
                     </Button>
                   }

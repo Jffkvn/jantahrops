@@ -1,20 +1,29 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { env } from './env';
+import type { Database } from '@/types/database';
 
-// Placeholder Database type until Prompt 0.5 generates real schema types
-export type Database = Record<string, unknown>;
+export type { Database };
 
-export const isSupabaseConfigured = Boolean(env.VITE_SUPABASE_URL && env.VITE_SUPABASE_ANON_KEY);
-
+/**
+ * The ONLY place createClient is ever called. Import getSupabase() everywhere
+ * else — a second client instance means a second session store, and sessions
+ * then diverge between parts of the app.
+ */
 let clientInstance: SupabaseClient<Database> | null = null;
 
 export function getSupabase(): SupabaseClient<Database> {
-  if (!isSupabaseConfigured) {
-    throw new Error(
-      'Supabase is not configured. Set VITE_SUPABASE_URL and ' +
-        'VITE_SUPABASE_ANON_KEY in .env.local — see .env.example.',
-    );
-  }
-  clientInstance ??= createClient<Database>(env.VITE_SUPABASE_URL, env.VITE_SUPABASE_ANON_KEY);
+  clientInstance ??= createClient<Database>(env.VITE_SUPABASE_URL, env.VITE_SUPABASE_ANON_KEY, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+      storageKey: 'jantahr-ops-auth',
+    },
+  });
   return clientInstance;
+}
+
+/** Test seam only — never call this from application code. */
+export function __resetSupabaseClientForTests(): void {
+  clientInstance = null;
 }

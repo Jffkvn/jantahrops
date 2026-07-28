@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { RouterProvider } from 'react-router';
 import { ThemeProvider } from './theme-provider';
 import { Toaster } from '@/components/ui/toast';
+import { AuthProvider } from '@/features/auth/auth-provider';
 import { router } from './router';
 
 const queryClient = new QueryClient({
@@ -23,8 +24,10 @@ export function Providers({ children }: ProvidersProps): JSX.Element {
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
-        {children ?? <RouterProvider router={router} />}
-        <Toaster />
+        <AuthProvider>
+          {children ?? <RouterProvider router={router} />}
+          <Toaster />
+        </AuthProvider>
       </ThemeProvider>
     </QueryClientProvider>
   );

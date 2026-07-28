@@ -28,7 +28,7 @@ export function DataTable<T>({ data, columns, keyExtractor, emptyState }: DataTa
             {columns.map((col, idx) => (
               <th
                 key={idx}
-                className={`px-4 py-2.5 font-display text-xs font-semibold uppercase tracking-wider text-ink-secondary ${
+                className={`px-4 py-2.5 font-display text-xs font-semibold text-ink-secondary ${
                   col.align === 'right'
                     ? 'text-right'
                     : col.align === 'center'

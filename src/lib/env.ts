@@ -5,57 +5,47 @@ const appEnvEnum = z.enum(['development', 'staging', 'production']);
 const envSchema = z.object({
   VITE_SUPABASE_URL: z.string().url(),
   VITE_SUPABASE_ANON_KEY: z.string().min(1),
-  VITE_APP_URL: z.string().url().default('http://localhost:5180'),
-  VITE_APP_ENV: appEnvEnum.default('development'),
+  VITE_APP_URL: z.string().url(),
+  VITE_APP_ENV: appEnvEnum,
 });
 
-function parseEnv() {
-  const rawUrl =
-    typeof import.meta.env.VITE_SUPABASE_URL === 'string' ? import.meta.env.VITE_SUPABASE_URL : '';
-  const rawKey =
-    typeof import.meta.env.VITE_SUPABASE_ANON_KEY === 'string'
-      ? import.meta.env.VITE_SUPABASE_ANON_KEY
-      : '';
-  const rawAppUrl =
-    typeof import.meta.env.VITE_APP_URL === 'string'
-      ? import.meta.env.VITE_APP_URL
-      : 'http://localhost:5180';
-  const rawAppEnv =
-    typeof import.meta.env.VITE_APP_ENV === 'string' ? import.meta.env.VITE_APP_ENV : 'development';
+export type Env = z.infer<typeof envSchema>;
 
-  const rawEnv = {
-    VITE_SUPABASE_URL: rawUrl,
-    VITE_SUPABASE_ANON_KEY: rawKey,
-    VITE_APP_URL: rawAppUrl,
-    VITE_APP_ENV: rawAppEnv,
+function readString(value: unknown, fallback = ''): string {
+  return typeof value === 'string' ? value : fallback;
+}
+
+/**
+ * Environment is validated once, at module load, and FAILS HARD.
+ *
+ * Prompt 0.1 deliberately allowed the app to boot with Supabase unset so the
+ * scaffold could be verified before a project existed. That allowance is gone:
+ * booting without a database produces confusing runtime errors a long way from
+ * their cause, which is strictly worse than refusing to start.
+ */
+function parseEnv(): Readonly<Env> {
+  const raw = {
+    VITE_SUPABASE_URL: readString(import.meta.env.VITE_SUPABASE_URL),
+    VITE_SUPABASE_ANON_KEY: readString(import.meta.env.VITE_SUPABASE_ANON_KEY),
+    VITE_APP_URL: readString(import.meta.env.VITE_APP_URL, 'http://localhost:5180'),
+    VITE_APP_ENV: readString(import.meta.env.VITE_APP_ENV, 'development'),
   };
 
-  const result = envSchema.safeParse(rawEnv);
+  const result = envSchema.safeParse(raw);
 
   if (!result.success) {
-    const missingKeys = result.error.issues.map((issue) => issue.path.join('.'));
-    console.warn(
-      `[env.ts] Missing or invalid environment variables: ${missingKeys.join(', ')}. Please set them in .env.local`,
+    const problems = result.error.issues
+      .map((issue) => `  - ${issue.path.join('.')}: ${issue.message}`)
+      .join('\n');
+
+    throw new Error(
+      `Invalid environment configuration:\n${problems}\n\n` +
+        'Copy .env.example to .env.local and fill in the values. The Supabase ' +
+        'URL and anon key are on the project API settings page.',
     );
-
-    const safeUrl = z.string().url().safeParse(rawUrl).success ? rawUrl : '';
-    const safeAppUrl = z.string().url().safeParse(rawAppUrl).success
-      ? rawAppUrl
-      : 'http://localhost:5180';
-    const safeAppEnv = appEnvEnum.safeParse(rawAppEnv).success
-      ? (rawAppEnv as z.infer<typeof appEnvEnum>)
-      : 'development';
-
-    return Object.freeze({
-      VITE_SUPABASE_URL: safeUrl,
-      VITE_SUPABASE_ANON_KEY: rawKey,
-      VITE_APP_URL: safeAppUrl,
-      VITE_APP_ENV: safeAppEnv,
-    });
   }
 
   return Object.freeze(result.data);
 }
 
 export const env = parseEnv();
-export type Env = typeof env;

@@ -6,7 +6,11 @@
     "moduleResolution": "bundler",
     "strict": true,
     "verbatimModuleSyntax": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    /* Without this, `tsc -b` in the build script emits vite.config.js and
+       vitest.config.js next to their .ts sources. Vite can then resolve the
+       stale .js config instead of the .ts one. Type-check only. */
+    "noEmit": true
   },
   "include": ["vite.config.ts", "vitest.config.ts", "eslint.config.js"]
 }

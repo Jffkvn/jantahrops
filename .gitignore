@@ -23,3 +23,6 @@ yarn-error.log*
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# RLS test credentials (service-role key — never commit)
+.env.rls.local

@@ -11,8 +11,7 @@ const buttonVariants = cva(
         secondary:
           'border border-border bg-surface text-ink hover:bg-surface-sunken hover:border-border-strong',
         ghost: 'text-ink hover:bg-surface-sunken',
-        highlight:
-          'bg-highlight text-highlight-ink hover:bg-highlight-hover font-semibold shadow-sm',
+        highlight: 'bg-highlight text-highlight-ink hover:bg-highlight-hover font-semibold',
         danger: 'bg-danger text-white hover:bg-danger/90',
         link: 'text-primary underline-offset-4 hover:underline',
       },

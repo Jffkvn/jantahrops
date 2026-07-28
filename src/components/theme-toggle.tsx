@@ -14,7 +14,7 @@ export function ThemeToggle() {
         aria-label="Light theme"
         className={`flex h-7 w-7 items-center justify-center rounded-pill transition-colors duration-150 ${
           theme === 'light'
-            ? 'bg-surface text-primary shadow-sm'
+            ? 'border border-border bg-surface text-primary'
             : 'text-ink-muted hover:text-ink'
         }`}
         onClick={() => setTheme('light')}
@@ -26,7 +26,7 @@ export function ThemeToggle() {
         aria-label="Dark theme"
         className={`flex h-7 w-7 items-center justify-center rounded-pill transition-colors duration-150 ${
           theme === 'dark'
-            ? 'bg-surface text-primary shadow-sm'
+            ? 'border border-border bg-surface text-primary'
             : 'text-ink-muted hover:text-ink'
         }`}
         onClick={() => setTheme('dark')}
@@ -38,7 +38,7 @@ export function ThemeToggle() {
         aria-label="System theme"
         className={`flex h-7 w-7 items-center justify-center rounded-pill transition-colors duration-150 ${
           theme === 'system'
-            ? 'bg-surface text-primary shadow-sm'
+            ? 'border border-border bg-surface text-primary'
             : 'text-ink-muted hover:text-ink'
         }`}
         onClick={() => setTheme('system')}

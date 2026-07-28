@@ -16,11 +16,18 @@
   --primary-soft: #E6EFF3;
   --primary-bright: #006C8B;
   --primary-ink: #FFFFFF;
+  /* The sidebar is a fixed brand slab. It must stay deep petrol in BOTH modes,
+     so it does NOT ride on --primary (which brightens on dark for buttons). */
+  --sidebar: #0B5978;
+  --sidebar-ink: #FFFFFF;
 
   --highlight: #F2B33D;
   --highlight-hover: #E0A22C;
   --highlight-soft: #FDF4E2;
+  /* ink ON solid amber */
   --highlight-ink: #5A3E04;
+  /* ink ON the amber tint */
+  --highlight-soft-ink: #5A3E04;
 
   --success: #15855A;
   --success-soft: #E4F3EB;
@@ -76,11 +83,19 @@
   --primary-soft: #12313F;
   --primary-bright: #4FB4D4;
   --primary-ink: #0A141A;
+  /* Slightly deeper than light mode so the slab sits against the dark canvas
+     without glowing, but still unmistakably the brand petrol — not black. */
+  --sidebar: #08394D;
+  --sidebar-ink: #EAF2F6;
 
   --highlight: #F5C05A;
   --highlight-hover: #FFCE72;
   --highlight-soft: #2E2413;
-  --highlight-ink: #F5C05A;
+  /* The amber surface is LIGHT in both modes, so its ink stays dark in both.
+     Setting this to the amber itself makes button labels invisible. */
+  --highlight-ink: #5A3E04;
+  /* highlight-soft is a dark brown here, so its ink is the amber. */
+  --highlight-soft-ink: #F5C05A;
 
   --success: #3BB584;
   --success-soft: #122C22;
@@ -137,10 +152,14 @@
   --color-primary-bright: var(--primary-bright);
   --color-primary-ink: var(--primary-ink);
 
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-ink: var(--sidebar-ink);
+
   --color-highlight: var(--highlight);
   --color-highlight-hover: var(--highlight-hover);
   --color-highlight-soft: var(--highlight-soft);
   --color-highlight-ink: var(--highlight-ink);
+  --color-highlight-soft-ink: var(--highlight-soft-ink);
 
   --color-success: var(--success);
   --color-success-soft: var(--success-soft);

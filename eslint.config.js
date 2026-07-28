@@ -10,7 +10,9 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,
   {
-    files: ['src/**/*.{ts,tsx}'],
+    // tests/ is included here too — it is covered by tsconfig.app.json, and
+    // type-aware rules error out on any file no tsconfig claims.
+    files: ['src/**/*.{ts,tsx}', 'tests/**/*.{ts,tsx}'],
     languageOptions: {
       parserOptions: {
         project: ['./tsconfig.app.json'],

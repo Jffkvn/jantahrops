@@ -50,46 +50,78 @@ const tokensCssPath = path.resolve(__dirname, './tokens.css');
 const cssContent = fs.readFileSync(tokensCssPath, 'utf8');
 const { lightTokens, darkTokens } = parseCssTokens(cssContent);
 
-describe('WCAG Contrast Ratios (Light Mode - Parsed from tokens.css)', () => {
-  const pairs = [
-    { name: 'ink / canvas', fg: lightTokens['ink']!, bg: lightTokens['canvas']!, min: 4.5 },
-    { name: 'ink / surface', fg: lightTokens['ink']!, bg: lightTokens['surface']!, min: 4.5 },
-    { name: 'ink-secondary / canvas', fg: lightTokens['ink-secondary']!, bg: lightTokens['canvas']!, min: 4.5 },
-    { name: 'ink-muted / canvas', fg: lightTokens['ink-muted']!, bg: lightTokens['canvas']!, min: 4.5 },
-    { name: 'ink-muted / surface', fg: lightTokens['ink-muted']!, bg: lightTokens['surface']!, min: 4.5 },
-    { name: 'primary-ink / primary', fg: lightTokens['primary-ink']!, bg: lightTokens['primary']!, min: 4.5 },
-    { name: 'highlight-ink / highlight', fg: lightTokens['highlight-ink']!, bg: lightTokens['highlight']!, min: 4.5 },
-    { name: 'highlight-ink / highlight-soft', fg: lightTokens['highlight-ink']!, bg: lightTokens['highlight-soft']!, min: 4.5 },
-  ];
+/**
+ * WCAG AA requires 4.5:1 for body text. Every pair below is body text or
+ * smaller, so 4.5 applies to all of them — there are no exceptions and no
+ * lowered thresholds.
+ *
+ * Both modes run the SAME pair list, built here once. Earlier this file had two
+ * hand-written lists that drifted: the dark block silently swapped
+ * `highlight-ink / highlight` for a different, passing pair, which hid the fact
+ * that the two tokens were identical and every amber button rendered invisible
+ * text. A shared list makes that class of divergence impossible.
+ */
+const MIN_RATIO = 4.5;
 
-  for (const { name, fg, bg, min } of pairs) {
-    it(`asserts ${name} (${fg} on ${bg}) contrast ratio >= ${min}:1`, () => {
-      expect(fg).toBeDefined();
-      expect(bg).toBeDefined();
-      const ratio = getContrastRatio(fg, bg);
-      expect(ratio).toBeGreaterThanOrEqual(min);
+const PAIRS: ReadonlyArray<readonly [fg: string, bg: string]> = [
+  ['ink', 'canvas'],
+  ['ink', 'surface'],
+  ['ink-secondary', 'canvas'],
+  ['ink-secondary', 'surface'],
+  ['ink-muted', 'canvas'],
+  ['ink-muted', 'surface'],
+  ['primary-ink', 'primary'],
+  ['sidebar-ink', 'sidebar'],
+  ['highlight-ink', 'highlight'],
+  ['highlight-soft-ink', 'highlight-soft'],
+];
+
+function runContrastSuite(mode: string, tokens: Record<string, string>) {
+  describe(`WCAG Contrast Ratios — ${mode} (parsed from tokens.css)`, () => {
+    it('parsed a non-empty token set', () => {
+      expect(Object.keys(tokens).length).toBeGreaterThan(10);
     });
-  }
-});
 
-describe('WCAG Contrast Ratios (Dark Mode - Parsed from tokens.css)', () => {
-  const pairs = [
-    { name: 'ink / canvas', fg: darkTokens['ink']!, bg: darkTokens['canvas']!, min: 4.5 },
-    { name: 'ink / surface', fg: darkTokens['ink']!, bg: darkTokens['surface']!, min: 4.5 },
-    { name: 'ink-secondary / canvas', fg: darkTokens['ink-secondary']!, bg: darkTokens['canvas']!, min: 4.5 },
-    { name: 'ink-muted / canvas', fg: darkTokens['ink-muted']!, bg: darkTokens['canvas']!, min: 4.5 },
-    { name: 'ink-muted / surface', fg: darkTokens['ink-muted']!, bg: darkTokens['surface']!, min: 4.5 },
-    { name: 'primary-ink / primary', fg: darkTokens['primary-ink']!, bg: darkTokens['primary']!, min: 4.5 },
-    { name: 'primary-ink / highlight', fg: darkTokens['primary-ink']!, bg: darkTokens['highlight']!, min: 4.5 },
-    { name: 'highlight-ink / highlight-soft', fg: darkTokens['highlight-ink']!, bg: darkTokens['highlight-soft']!, min: 4.5 },
-  ];
+    for (const [fgName, bgName] of PAIRS) {
+      it(`${fgName} on ${bgName} is at least ${MIN_RATIO}:1`, () => {
+        const fg = tokens[fgName];
+        const bg = tokens[bgName];
+        // A missing token must fail loudly, never skip the assertion.
+        expect(fg, `--${fgName} is not defined in the ${mode} block`).toBeDefined();
+        expect(bg, `--${bgName} is not defined in the ${mode} block`).toBeDefined();
 
-  for (const { name, fg, bg, min } of pairs) {
-    it(`asserts ${name} (${fg} on ${bg}) contrast ratio >= ${min}:1`, () => {
-      expect(fg).toBeDefined();
-      expect(bg).toBeDefined();
-      const ratio = getContrastRatio(fg, bg);
-      expect(ratio).toBeGreaterThanOrEqual(min);
-    });
-  }
+        const ratio = getContrastRatio(fg!, bg!);
+        expect(
+          ratio,
+          `${fgName} (${fg!}) on ${bgName} (${bg!}) = ${ratio.toFixed(2)}:1`,
+        ).toBeGreaterThanOrEqual(MIN_RATIO);
+      });
+    }
+  });
+}
+
+runContrastSuite('light', lightTokens);
+runContrastSuite('dark', darkTokens);
+
+describe('token hygiene', () => {
+  it('never lets a solid surface and its ink be the same colour', () => {
+    for (const [mode, tokens] of [
+      ['light', lightTokens],
+      ['dark', darkTokens],
+    ] as const) {
+      for (const [fgName, bgName] of PAIRS) {
+        expect(
+          tokens[fgName],
+          `--${fgName} and --${bgName} are identical in ${mode} mode, which renders text invisible`,
+        ).not.toBe(tokens[bgName]);
+      }
+    }
+  });
+
+  it('defines the same token names in both modes', () => {
+    const lightKeys = Object.keys(lightTokens).sort();
+    const darkKeys = Object.keys(darkTokens).sort();
+    const missingInDark = lightKeys.filter((k) => !darkKeys.includes(k));
+    expect(missingInDark, `tokens missing from .dark: ${missingInDark.join(', ')}`).toEqual([]);
+  });
 });
