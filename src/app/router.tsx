@@ -7,10 +7,10 @@ import { LoginPage } from '@/features/auth/login-page';
 import { ForgotPasswordPage } from '@/features/auth/forgot-password-page';
 import { ResetPasswordPage } from '@/features/auth/reset-password-page';
 import { TodayPage } from '@/features/today/today-page';
+import { LeadsPage } from '@/features/leads/leads-page';
 
 /** Placeholder routes, tagged with the phase that will build each for real. */
 const placeholders: { path: string; title: string; phase: string }[] = [
-  { path: 'leads', title: 'Leads', phase: 'Phase 1' },
   { path: 'contacts', title: 'Contacts', phase: 'Phase 0' },
   { path: 'organisations', title: 'Organisations', phase: 'Phase 0' },
   { path: 'projects', title: 'Projects', phase: 'Phase 4' },
@@ -44,6 +44,7 @@ export const router = createBrowserRouter([
     ),
     children: [
       { index: true, element: <TodayPage /> },
+      { path: 'leads', element: <LeadsPage /> },
       ...placeholders.map((p) => ({
         path: p.path,
         element: <PlaceholderPage phase={p.phase} title={p.title} />,
