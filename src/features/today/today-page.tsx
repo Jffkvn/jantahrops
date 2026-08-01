@@ -9,6 +9,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { formatDate } from '@/lib/format';
 import { NextActionDot } from '@/features/leads/next-action-dot';
 import { LeadDetailSheet } from '@/features/leads/lead-detail-sheet';
+import { SignalsSection } from '@/features/signals/signals-section';
 import { useDayView } from './use-today';
 import type { LeadWithRelations } from '@/features/leads/leads-api';
 
@@ -50,6 +51,9 @@ export function TodayPage() {
           </ul>
         )}
       </section>
+
+      {/* Signals — flagged problems with a one-click action. Hidden when none. */}
+      <SignalsSection onOpenLead={setOpenLeadId} />
 
       {/* Quiet number strip — a footnote, not a hero. */}
       <div className="mt-8 grid gap-4 sm:grid-cols-3">

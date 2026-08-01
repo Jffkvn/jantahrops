@@ -41,6 +41,20 @@ export default tseslint.config(
     },
   },
   {
+    // RLS tests drive a raw, deliberately-untyped service-role client — they
+    // test database behaviour at the PostgREST level, not the typed app client.
+    // The unsafe-* rules only add noise there.
+    files: ['tests/rls/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-unsafe-assignment': 'off',
+      '@typescript-eslint/no-unsafe-argument': 'off',
+      '@typescript-eslint/no-unsafe-member-access': 'off',
+      '@typescript-eslint/no-unsafe-return': 'off',
+      '@typescript-eslint/no-unsafe-call': 'off',
+      '@typescript-eslint/no-non-null-assertion': 'off',
+    },
+  },
+  {
     files: ['*.js', '*.ts'],
     ignores: ['src/**'],
     ...tseslint.configs.disableTypeChecked,

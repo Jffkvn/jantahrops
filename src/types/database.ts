@@ -34,6 +34,8 @@ export type LeadStage =
   | 'won'
   | 'lost'
   | 'dormant';
+export type SignalSeverity = 'info' | 'warn' | 'urgent';
+export type SignalStatus = 'open' | 'dismissed' | 'actioned' | 'expired';
 
 // --- rows ------------------------------------------------------------------
 export type ProfileRow = {
@@ -133,6 +135,23 @@ export type LeadRow = {
   updated_at: string;
 }
 
+export type SignalRow = {
+  id: string;
+  kind: string;
+  severity: SignalSeverity;
+  subject_type: string;
+  subject_id: string;
+  title: string;
+  detail: string | null;
+  evidence: Record<string, unknown>;
+  suggested_action: string | null;
+  action_payload: Record<string, unknown>;
+  status: SignalStatus;
+  generated_at: string;
+  dismissed_by: string | null;
+  dismissed_at: string | null;
+};
+
 // --- insert shapes ---------------------------------------------------------
 // Insert = the genuinely-required columns (NOT NULL, no default), with every
 // other column optional (nullable or server-defaulted). This matches how the
@@ -148,6 +167,7 @@ type ContactRoleInsert = Insertable<ContactRoleRow, 'contact_id' | 'role'>;
 type ActivityInsert = Insertable<ActivityRow, 'subject_type' | 'subject_id'>;
 type TaskInsert = Insertable<TaskRow, 'title'>;
 type LeadInsert = Insertable<LeadRow, 'contact_id'>;
+type SignalInsert = Insertable<SignalRow, 'kind' | 'subject_type' | 'subject_id' | 'title'>;
 
 export interface Database {
   public: {
@@ -194,10 +214,17 @@ export interface Database {
         Update: Partial<Omit<LeadRow, 'id' | 'created_at'>>;
         Relationships: [];
       };
+      signals: {
+        Row: SignalRow;
+        Insert: SignalInsert;
+        Update: Partial<Omit<SignalRow, 'id' | 'generated_at'>>;
+        Relationships: [];
+      };
     };
     Views: Record<never, never>;
     Functions: {
       is_admin: { Args: Record<never, never>; Returns: boolean };
+      generate_signals: { Args: Record<never, never>; Returns: undefined };
     };
     Enums: {
       user_role: UserRole;
