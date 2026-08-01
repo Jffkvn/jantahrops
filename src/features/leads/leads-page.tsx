@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router';
 import { Plus, LayoutGrid, List, Search } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { PageHeader } from '@/components/page-header';
@@ -34,6 +35,35 @@ export function LeadsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [openLeadId, setOpenLeadId] = useState<string | null>(null);
   const { data: team } = useTeam();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // ⌘K deep-links here: ?lead=<id> opens a lead, ?new=1 opens the create sheet
+  // (optionally prefilled with ?name / ?phone). Consume the params once so a
+  // refresh or a closed sheet doesn't reopen.
+  const createInitial = useMemo(
+    () => ({
+      contactName: searchParams.get('name') ?? undefined,
+      contactPhone: searchParams.get('phone') ?? undefined,
+    }),
+    [searchParams],
+  );
+
+  useEffect(() => {
+    const leadParam = searchParams.get('lead');
+    const newParam = searchParams.get('new');
+    if (leadParam) {
+      setOpenLeadId(leadParam);
+      searchParams.delete('lead');
+      setSearchParams(searchParams, { replace: true });
+    } else if (newParam) {
+      setCreateOpen(true);
+      searchParams.delete('new');
+      searchParams.delete('name');
+      searchParams.delete('phone');
+      setSearchParams(searchParams, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   useEffect(() => localStorage.setItem(VIEW_KEY, view), [view]);
 
@@ -122,7 +152,7 @@ export function LeadsPage() {
         />
       )}
 
-      <CreateLeadSheet onOpenChange={setCreateOpen} open={createOpen} />
+      <CreateLeadSheet initial={createInitial} onOpenChange={setCreateOpen} open={createOpen} />
       <LeadDetailSheet leadId={openLeadId} onOpenChange={(o) => !o && setOpenLeadId(null)} />
     </div>
   );

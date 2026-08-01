@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -49,12 +49,21 @@ const schema = z
 
 type FormValues = z.infer<typeof schema>;
 
+export interface CreateLeadInitial {
+  contactName?: string | undefined;
+  contactPhone?: string | undefined;
+  serviceInterest?: string | undefined;
+}
+
 export function CreateLeadSheet({
   open,
   onOpenChange,
+  initial,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Prefill from ⌘K quick-add. Applied when the sheet opens. */
+  initial?: CreateLeadInitial;
 }) {
   const { user } = useAuth();
   const { data: team } = useTeam();
@@ -81,6 +90,15 @@ export function CreateLeadSheet({
       source: 'Manual entry',
     },
   });
+
+  // Apply prefill each time the sheet opens with new initial data.
+  useEffect(() => {
+    if (open && initial) {
+      if (initial.contactName) setValue('contactName', initial.contactName);
+      if (initial.contactPhone) setValue('contactPhone', initial.contactPhone);
+      if (initial.serviceInterest) setValue('serviceInterest', initial.serviceInterest);
+    }
+  }, [open, initial, setValue]);
 
   const ownerId = watch('ownerId');
 
