@@ -26,3 +26,6 @@ yarn-error.log*
 
 # RLS test credentials (service-role key — never commit)
 .env.rls.local
+
+# Supabase Management API access token (Edge Function deploy). Never commit.
+.env.supabase.local

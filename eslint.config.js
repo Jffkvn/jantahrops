@@ -5,7 +5,9 @@ import reactRefresh from 'eslint-plugin-react-refresh';
 
 export default tseslint.config(
   {
-    ignores: ['dist/**', 'coverage/**', 'node_modules/**'],
+    // supabase/functions run on Deno (jsr: imports, Deno global) — a separate
+    // runtime with its own toolchain, not part of the app's TS project.
+    ignores: ['dist/**', 'coverage/**', 'node_modules/**', 'supabase/functions/**'],
   },
   js.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,
