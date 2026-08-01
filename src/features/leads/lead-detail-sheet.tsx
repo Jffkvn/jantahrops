@@ -17,6 +17,7 @@ import { formatDateTime, formatRelative } from '@/lib/format';
 import { formatPhoneDisplay } from '@/lib/phone';
 import { LEAD_STAGES, stageMeta } from './lead-stages';
 import { NextActionDot } from './next-action-dot';
+import { NextActionEditor } from './next-action-editor';
 import { useLead, useLeadTimeline, useUpdateLeadStage, useAddLeadNote } from './use-leads';
 import type { LeadStage } from '@/types/database';
 
@@ -112,10 +113,20 @@ function LeadDetailBody({ leadId }: { leadId: string }) {
         <Fact label="Source">{lead.source ?? <span className="text-ink-muted">—</span>}</Fact>
         {contact?.phone_e164 && <Fact label="Phone">{formatPhoneDisplay(contact.phone_e164)}</Fact>}
         {contact?.email && <Fact label="Email">{contact.email}</Fact>}
-        <Fact label="Next action">
-          <NextActionDot nextActionAt={lead.next_action_at} withLabel />
-        </Fact>
         <Fact label="Created">{formatRelative(lead.created_at)}</Fact>
+      </div>
+
+      {/* Next follow-up — the field the Day View and reminders read. */}
+      <div className="border-b border-border p-6">
+        <div className="mb-2 flex items-center justify-between">
+          <label className="text-xs font-semibold text-ink-secondary">Next follow-up</label>
+          <NextActionDot nextActionAt={lead.next_action_at} withLabel />
+        </div>
+        <NextActionEditor
+          leadId={lead.id}
+          nextActionAt={lead.next_action_at}
+          nextActionNote={lead.next_action_note}
+        />
       </div>
 
       {/* Stage control */}

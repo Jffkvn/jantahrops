@@ -90,6 +90,8 @@ export function useUpdateLead(id: string) {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.all });
       void qc.invalidateQueries({ queryKey: keys.detail(id) });
+      // A changed next_action_at moves this lead in or out of the Day View.
+      void qc.invalidateQueries({ queryKey: ['day-view'] });
     },
   });
 }

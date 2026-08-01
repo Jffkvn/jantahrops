@@ -121,3 +121,25 @@ export function formatDateTime(d: Date | string): string {
 export function formatRelative(d: Date | string): string {
   return formatDistanceToNow(toDate(d), { addSuffix: true });
 }
+
+/**
+ * A `<input type="date">` value (YYYY-MM-DD) for the Kampala calendar date of
+ * the given instant. Empty string for null, so it clears the input.
+ */
+export function toDateInputValue(d: Date | string | null): string {
+  if (!d) return '';
+  return formatInTimeZone(toDate(d), APP_TIMEZONE, 'yyyy-MM-dd');
+}
+
+/**
+ * Turn a date-input value (YYYY-MM-DD) into an ISO instant at the given hour of
+ * that day in Kampala. Follow-ups are date-granular; defaulting to 09:00 EAT
+ * puts "due today" at the start of the working day rather than midnight.
+ * Returns null for an empty string.
+ */
+export function dateInputToISO(dateStr: string, hour = 9): string | null {
+  if (!dateStr) return null;
+  const hh = String(hour).padStart(2, '0');
+  const d = new Date(`${dateStr}T${hh}:00:00+03:00`); // EAT = UTC+3, no DST
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
