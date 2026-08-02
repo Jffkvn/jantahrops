@@ -8,6 +8,10 @@ import { ForgotPasswordPage } from '@/features/auth/forgot-password-page';
 import { ResetPasswordPage } from '@/features/auth/reset-password-page';
 import { TodayPage } from '@/features/today/today-page';
 import { LeadsPage } from '@/features/leads/leads-page';
+import { FinancePage } from '@/features/finance/finance-page';
+import { DocumentEditor } from '@/features/finance/document-editor';
+import { ExpensesPage } from '@/features/finance/expenses-page';
+import { PrintView } from '@/features/finance/print-view';
 
 /** Placeholder routes, tagged with the phase that will build each for real. */
 const placeholders: { path: string; title: string; phase: string }[] = [
@@ -17,8 +21,6 @@ const placeholders: { path: string; title: string; phase: string }[] = [
   { path: 'recruitment', title: 'Recruitment', phase: 'Phase 3' },
   { path: 'talent', title: 'Talent Pool', phase: 'Phase 3' },
   { path: 'academy', title: 'Academy', phase: 'Phase 5' },
-  { path: 'finance', title: 'Finance', phase: 'Phase 2' },
-  { path: 'expenses', title: 'Expenses', phase: 'Phase 2' },
   { path: 'content', title: 'Content', phase: 'Phase 6' },
   { path: 'tasks', title: 'Tasks', phase: 'Phase 1' },
   { path: 'reports', title: 'Reports', phase: 'Phase 6' },
@@ -30,6 +32,16 @@ export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
   { path: '/forgot-password', element: <ForgotPasswordPage /> },
   { path: '/reset-password', element: <ResetPasswordPage /> },
+
+  // Document print/PDF view — rendered WITHOUT the app shell.
+  {
+    path: '/finance/:id/print',
+    element: (
+      <ProtectedRoute>
+        <PrintView />
+      </ProtectedRoute>
+    ),
+  },
 
   // Design review surface. Public so it can be opened without an account.
   { path: '/styleguide', element: <StyleguidePage /> },
@@ -45,6 +57,10 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <TodayPage /> },
       { path: 'leads', element: <LeadsPage /> },
+      { path: 'finance', element: <FinancePage /> },
+      { path: 'finance/new/:type', element: <DocumentEditor /> },
+      { path: 'finance/:id', element: <DocumentEditor /> },
+      { path: 'expenses', element: <ExpensesPage /> },
       ...placeholders.map((p) => ({
         path: p.path,
         element: <PlaceholderPage phase={p.phase} title={p.title} />,
