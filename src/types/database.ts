@@ -288,6 +288,101 @@ export type ExpenseCategorySummaryResult = {
   categories: { category: ExpenseCategory; total_ugx: number }[];
 };
 
+export type VacancyStatus = 'draft' | 'open' | 'paused' | 'closed';
+export type EmploymentType = 'full_time' | 'part_time' | 'contract' | 'temporary' | 'internship';
+export type ApplicationStage =
+  | 'new'
+  | 'screened'
+  | 'shortlisted'
+  | 'interview_scheduled'
+  | 'interviewed'
+  | 'rejected'
+  | 'offered'
+  | 'hired'
+  | 'talent_pool';
+export type AvailabilityStatus = 'immediate' | 'one_month' | 'three_months' | 'not_looking';
+
+export type VacancyRow = {
+  id: string;
+  organisation_id: string | null; // the client hiring
+  title: string;
+  slug: string;
+  summary: string | null;
+  description: string | null;
+  requirements: string | null;
+  location: string | null;
+  employment_type: EmploymentType | null;
+  salary_min_ugx: number | null; // whole UGX
+  salary_max_ugx: number | null; // whole UGX
+  status: VacancyStatus;
+  is_public: boolean;
+  published_at: string | null;
+  closes_at: string | null;
+  owner_id: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CandidateRow = {
+  id: string;
+  contact_id: string;
+  headline: string | null;
+  years_experience: number | null;
+  skills: string[];
+  education: unknown[];
+  work_history: unknown[];
+  salary_expectation_ugx: number | null; // whole UGX
+  availability: AvailabilityStatus | null;
+  cv_file_id: string | null;
+  cv_parsed: unknown;
+  cv_parsed_at: string | null;
+  rating: number | null; // 1..5, internal
+  is_available: boolean;
+  source: string | null;
+  notes: string | null;
+  owner_id: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ApplicationRow = {
+  id: string;
+  vacancy_id: string;
+  candidate_id: string;
+  source: string | null;
+  stage: ApplicationStage;
+  applied_at: string;
+  owner_id: string | null;
+  notes: string | null;
+  rejected_reason: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type InterviewRow = {
+  id: string;
+  application_id: string;
+  scheduled_at: string | null;
+  mode: string | null;
+  panel: string[];
+  feedback: string | null;
+  rating: number | null; // 1..5
+  outcome: string | null; // 'pass'|'fail'|'hold'
+  created_at: string;
+};
+
+export type CandidateFileRow = {
+  id: string;
+  bucket: string;
+  path: string;
+  filename: string;
+  mime: string;
+  size_bytes: number;
+  uploaded_by: string | null;
+  created_at: string;
+};
+
 // --- insert shapes ---------------------------------------------------------
 type Insertable<Row, Required extends keyof Row> = Pick<Row, Required> & Partial<Row>;
 
@@ -307,6 +402,11 @@ type DocumentSequenceInsert = Insertable<DocumentSequenceRow, 'doc_type' | 'year
 type PaymentInsert = Insertable<PaymentRow, 'document_id' | 'method'>;
 type ExpenseInsert = Insertable<ExpenseRow, 'category' | 'amount_ugx' | 'incurred_on'>;
 type FinanceFileInsert = Insertable<FinanceFileRow, 'path' | 'filename' | 'mime' | 'size_bytes'>;
+type VacancyInsert = Insertable<VacancyRow, 'title' | 'slug'>;
+type CandidateInsert = Insertable<CandidateRow, 'contact_id'>;
+type ApplicationInsert = Insertable<ApplicationRow, 'vacancy_id' | 'candidate_id'>;
+type InterviewInsert = Insertable<InterviewRow, 'application_id'>;
+type CandidateFileInsert = Insertable<CandidateFileRow, 'path' | 'filename' | 'mime' | 'size_bytes'>;
 
 export interface Database {
   public: {
@@ -401,6 +501,36 @@ export interface Database {
         Update: Partial<Omit<FinanceFileRow, 'id' | 'created_at'>>;
         Relationships: [];
       };
+      vacancies: {
+        Row: VacancyRow;
+        Insert: VacancyInsert;
+        Update: Partial<Omit<VacancyRow, 'id' | 'created_at'>>;
+        Relationships: [];
+      };
+      candidates: {
+        Row: CandidateRow;
+        Insert: CandidateInsert;
+        Update: Partial<Omit<CandidateRow, 'id' | 'created_at'>>;
+        Relationships: [];
+      };
+      applications: {
+        Row: ApplicationRow;
+        Insert: ApplicationInsert;
+        Update: Partial<Omit<ApplicationRow, 'id' | 'created_at'>>;
+        Relationships: [];
+      };
+      interviews: {
+        Row: InterviewRow;
+        Insert: InterviewInsert;
+        Update: Partial<Omit<InterviewRow, 'id' | 'created_at'>>;
+        Relationships: [];
+      };
+      candidate_files: {
+        Row: CandidateFileRow;
+        Insert: CandidateFileInsert;
+        Update: Partial<Omit<CandidateFileRow, 'id' | 'created_at'>>;
+        Relationships: [];
+      };
     };
     Views: {
       v_invoice_balances: { Row: InvoiceBalanceViewRow; Relationships: [] };
@@ -428,6 +558,10 @@ export interface Database {
       document_type: DocumentType;
       document_status: DocumentStatus;
       payment_method: PaymentMethod;
+      vacancy_status: VacancyStatus;
+      employment_type: EmploymentType;
+      application_stage: ApplicationStage;
+      availability_status: AvailabilityStatus;
     };
     CompositeTypes: Record<never, never>;
   };

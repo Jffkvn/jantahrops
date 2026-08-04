@@ -35,6 +35,12 @@ This document serves as a strict checklist for all development sessions.
 - Rules a policy cannot express — such as protecting a single column — go in a `BEFORE UPDATE` trigger (see `public.enforce_role_change()`).
 - **The service-role key bypasses RLS policies but NOT triggers.** Any trigger that gates on `auth.uid()` must allow `auth.uid() IS NULL`, or trusted server-side callers and migrations are locked out — this made the first admin impossible to create until it was fixed.
 
+## Recruitment & Search
+
+- **Contacts are the spine for people.** A candidate is a `candidates` row that references exactly one `contacts` row (`unique(contact_id)`); a contact can also be a lead. Never create a parallel person table.
+- **Candidate search is full-text today.** `candidates.search_tsv` is a generated tsvector (simple config) over headline, skills and notes, GIN-indexed; the contact's name is searched via a contacts id-list join. An immutable `public.array_to_text(text[])` wrapper exists because `array_to_string` is `stable`, not `immutable`, and cannot appear in a generated column.
+- **Semantic search is deferred.** A future AI slice adds `candidates.embedding vector(1536)` plus an appropriate index and a CV-parsing Edge Function populating `cv_parsed`/`cv_parsed_at`. Do NOT add the pgvector column or ivfflat index in the meantime, and do not build AI calls now. Until that slice, search stays full-text — fine at current volume.
+
 ## Auth
 
 - No public sign-up. Accounts are created by an admin in the Supabase dashboard.
