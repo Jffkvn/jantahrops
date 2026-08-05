@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
-import { Search, CornerDownLeft, Plus, Target, Moon } from 'lucide-react';
+import { Search, CornerDownLeft, Plus, Target, Moon, Briefcase, UserRound } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { useTheme } from '@/app/theme-provider';
 import { NAV_ITEMS } from './nav-config';
-import { searchLeads, parseQuickLead } from '@/features/search/search-api';
+import { searchLeads, searchVacancies, searchCandidates, parseQuickLead } from '@/features/search/search-api';
 import { stageMeta } from '@/features/leads/lead-stages';
+import { VACANCY_STATUS_LABELS } from '@/features/recruitment/recruitment-meta';
 
 interface CommandBarProps {
   open: boolean;
@@ -53,6 +54,20 @@ export function CommandBar({ open, onOpenChange }: CommandBarProps) {
     staleTime: 10_000,
   });
 
+  const { data: vacancyResults } = useQuery({
+    queryKey: ['cmdk-vacancies', debounced],
+    queryFn: () => searchVacancies(debounced),
+    enabled: open && debounced.length >= 2,
+    staleTime: 10_000,
+  });
+
+  const { data: candidateResults } = useQuery({
+    queryKey: ['cmdk-candidates', debounced],
+    queryFn: () => searchCandidates(debounced),
+    enabled: open && debounced.length >= 2,
+    staleTime: 10_000,
+  });
+
   const quick = useMemo(() => parseQuickLead(query), [query]);
 
   const items = useMemo<Item[]>(() => {
@@ -80,6 +95,28 @@ export function CommandBar({ open, onOpenChange }: CommandBarProps) {
         hint: stageMeta(r.stage).label,
         icon: Target,
         run: () => go(`/leads?lead=${r.leadId}`),
+      });
+    }
+
+    // Vacancy search results.
+    for (const v of vacancyResults ?? []) {
+      list.push({
+        id: `vacancy:${v.vacancyId}`,
+        label: v.title,
+        hint: VACANCY_STATUS_LABELS[v.status as keyof typeof VACANCY_STATUS_LABELS] ?? v.status,
+        icon: Briefcase,
+        run: () => go(`/recruitment/${v.vacancyId}`),
+      });
+    }
+
+    // Candidate search results — land on the talent pool.
+    for (const c of candidateResults ?? []) {
+      list.push({
+        id: `candidate:${c.candidateId}`,
+        label: c.contactName,
+        hint: c.headline ?? 'Candidate',
+        icon: UserRound,
+        run: () => go(`/talent?candidate=${c.candidateId}`),
       });
     }
 
@@ -115,7 +152,7 @@ export function CommandBar({ open, onOpenChange }: CommandBarProps) {
     }
     return list;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, quick, leadResults, theme]);
+  }, [query, quick, leadResults, vacancyResults, candidateResults, theme]);
 
   useEffect(() => {
     if (open) {

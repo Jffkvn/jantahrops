@@ -12,14 +12,16 @@ import { FinancePage } from '@/features/finance/finance-page';
 import { DocumentEditor } from '@/features/finance/document-editor';
 import { ExpensesPage } from '@/features/finance/expenses-page';
 import { PrintView } from '@/features/finance/print-view';
+import { RecruitmentPage } from '@/features/recruitment/recruitment-page';
+import { VacancyPipelinePage } from '@/features/recruitment/vacancy-pipeline-page';
+import { TalentPoolPage } from '@/features/recruitment/talent-pool-page';
+import { ShortlistPrintView } from '@/features/recruitment/shortlist-print-view';
 
 /** Placeholder routes, tagged with the phase that will build each for real. */
 const placeholders: { path: string; title: string; phase: string }[] = [
   { path: 'contacts', title: 'Contacts', phase: 'Phase 0' },
   { path: 'organisations', title: 'Organisations', phase: 'Phase 0' },
   { path: 'projects', title: 'Projects', phase: 'Phase 4' },
-  { path: 'recruitment', title: 'Recruitment', phase: 'Phase 3' },
-  { path: 'talent', title: 'Talent Pool', phase: 'Phase 3' },
   { path: 'academy', title: 'Academy', phase: 'Phase 5' },
   { path: 'content', title: 'Content', phase: 'Phase 6' },
   { path: 'tasks', title: 'Tasks', phase: 'Phase 1' },
@@ -43,6 +45,16 @@ export const router = createBrowserRouter([
     ),
   },
 
+  // Recruitment shortlist pack — rendered WITHOUT the app shell, like the finance print view.
+  {
+    path: '/recruitment/:vacancyId/shortlist',
+    element: (
+      <ProtectedRoute>
+        <ShortlistPrintView />
+      </ProtectedRoute>
+    ),
+  },
+
   // Design review surface. Public so it can be opened without an account.
   { path: '/styleguide', element: <StyleguidePage /> },
 
@@ -61,6 +73,9 @@ export const router = createBrowserRouter([
       { path: 'finance/new/:type', element: <DocumentEditor /> },
       { path: 'finance/:id', element: <DocumentEditor /> },
       { path: 'expenses', element: <ExpensesPage /> },
+      { path: 'recruitment', element: <RecruitmentPage /> },
+      { path: 'recruitment/:vacancyId', element: <VacancyPipelinePage /> },
+      { path: 'talent', element: <TalentPoolPage /> },
       ...placeholders.map((p) => ({
         path: p.path,
         element: <PlaceholderPage phase={p.phase} title={p.title} />,

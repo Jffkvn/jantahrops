@@ -1,6 +1,88 @@
 import { getSupabase } from '@/lib/supabase';
 import type { LeadStage } from '@/types/database';
 
+export interface VacancySearchResult {
+  vacancyId: string;
+  title: string;
+  status: string;
+}
+
+/**
+ * Server-side quick search over vacancies, matched by title. Capped small —
+ * this is a jump-to, not a report.
+ */
+export async function searchVacancies(query: string, limit = 8): Promise<VacancySearchResult[]> {
+  const term = query.trim();
+  if (term.length < 2) return [];
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from('vacancies')
+    .select('id, title, status')
+    .ilike('title', `%${term}%`)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return (data ?? []).map((row) => ({
+    vacancyId: row.id,
+    title: row.title,
+    status: row.status,
+  }));
+}
+
+export interface CandidateSearchResult {
+  candidateId: string;
+  contactName: string;
+  headline: string | null;
+}
+
+/**
+ * Server-side quick search over candidates. Matches the contact's name or the
+ * candidate's own FTS vector (headline + skills) — same resolution approach as
+ * searchLeads.
+ */
+export async function searchCandidates(query: string, limit = 8): Promise<CandidateSearchResult[]> {
+  const term = query.trim();
+  if (term.length < 2) return [];
+  const supabase = getSupabase();
+
+  const [{ data: nameMatches }, { data: ownMatches }] = await Promise.all([
+    supabase.from('contacts').select('id').ilike('full_name', `%${term}%`).limit(50),
+    supabase.from('candidates').select('id').textSearch('search_tsv', term, {
+      type: 'plain',
+      config: 'simple',
+    }),
+  ]);
+
+  const contactIds = (nameMatches ?? []).map((c) => c.id);
+  const ownIds = (ownMatches ?? []).map((c) => c.id);
+  const ids = new Set([...contactIds, ...ownIds]);
+  if (ids.size === 0) return [];
+
+  const { data, error } = await supabase
+    .from('candidates')
+    .select(
+      `id, headline,
+       contact:contacts!candidates_contact_id_fkey ( full_name )`,
+    )
+    .in('id', [...ids])
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+
+  return (data ?? []).map((row) => {
+    const r = row as unknown as {
+      id: string;
+      headline: string | null;
+      contact: { full_name: string } | null;
+    };
+    return {
+      candidateId: r.id,
+      contactName: r.contact?.full_name ?? 'Unknown',
+      headline: r.headline,
+    };
+  });
+}
+
 export interface LeadSearchResult {
   leadId: string;
   contactName: string;

@@ -257,7 +257,21 @@ Deno.serve(async (req: Request) => {
     if (existing?.data) {
       oldCvFileId = existing.data.cv_file_id;
       candidateId = existing.data.id;
-      await supabase.from('candidates').update(profileFields).eq('id', candidateId);
+      // A re-registration is a PARTIAL update: the form may omit fields the
+      // candidate gave us last time. Only write keys the payload actually
+      // supplied — otherwise a shorter second submission silently wipes good
+      // data (availability, salary expectation, skills) we already held.
+      const patch = Object.fromEntries(
+        Object.entries(profileFields).filter(([key, value]) => {
+          if (key === 'source' || key === 'owner_id') return false; // never overwrite on update
+          if (value === null) return false;
+          if (Array.isArray(value) && value.length === 0) return false;
+          return true;
+        }),
+      );
+      if (Object.keys(patch).length > 0) {
+        await supabase.from('candidates').update(patch).eq('id', candidateId);
+      }
     } else {
       const { data, error } = await supabase
         .from('candidates')

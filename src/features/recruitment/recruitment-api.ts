@@ -18,12 +18,19 @@ import type {
 export interface VacancyWithRelations extends VacancyRow {
   organisation: Pick<OrganisationRow, 'id' | 'name'> | null;
   owner: { id: string; full_name: string } | null;
+  applications: { count: number }[];
+}
+
+/** Number of applications on a vacancy, or 0 when not populated. */
+export function applicantCount(vacancy: VacancyWithRelations): number {
+  return vacancy.applications?.[0]?.count ?? 0;
 }
 
 const VACANCY_SELECT = `
   *,
   organisation:organisations!vacancies_organisation_id_fkey ( id, name ),
-  owner:profiles!vacancies_owner_id_fkey ( id, full_name )
+  owner:profiles!vacancies_owner_id_fkey ( id, full_name ),
+  applications:applications!applications_vacancy_id_fkey ( count )
 `;
 
 export interface ListVacanciesParams {
@@ -146,6 +153,7 @@ export interface UpdateVacancyInput {
   closes_at?: string | null;
   organisation_id?: string | null;
   owner_id?: string | null;
+  status?: VacancyStatus;
 }
 
 export async function updateVacancy(id: string, patch: UpdateVacancyInput): Promise<void> {
@@ -295,7 +303,12 @@ export async function cvSignedUrl(
 
 export interface ApplicationWithRelations extends ApplicationRow {
   vacancy: Pick<VacancyRow, 'id' | 'title' | 'slug' | 'status'> | null;
-  candidate: Pick<CandidateRow, 'id' | 'headline' | 'skills'> | null;
+  candidate:
+    | Pick<
+        CandidateRow,
+        'id' | 'headline' | 'skills' | 'rating' | 'years_experience' | 'salary_expectation_ugx' | 'availability'
+      >
+    | null;
   candidateContact: Pick<ContactRow, 'id' | 'full_name' | 'email' | 'phone_e164'> | null;
 }
 
@@ -311,6 +324,27 @@ export interface ListApplicationsResult {
   total: number;
 }
 
+/**
+ * PostgREST cannot alias a two-hop relation flat, so `candidateContact` comes
+ * back nested as `{ contact: {...} }`. Every consumer (board card, detail
+ * sheet, shortlist pack) reads `candidateContact.full_name` directly, per the
+ * declared type — so flatten it here, once, at the boundary.
+ *
+ * Without this every candidate renders as "Unnamed candidate", including on the
+ * client-facing shortlist pack. The casts below hid it from the compiler.
+ */
+export function flattenCandidateContact<T>(rows: unknown[]): T[] {
+  return rows.map((row) => {
+    const r = row as { candidateContact?: { contact?: unknown } | null };
+    const nested = r.candidateContact;
+    return {
+      ...(row as object),
+      candidateContact:
+        nested && typeof nested === 'object' && 'contact' in nested ? (nested.contact ?? null) : (nested ?? null),
+    } as T;
+  });
+}
+
 export async function listApplications(vacancyId: string): Promise<ApplicationWithRelations[]> {
   const supabase = getSupabase();
   const { data, error } = await supabase
@@ -319,7 +353,7 @@ export async function listApplications(vacancyId: string): Promise<ApplicationWi
     .eq('vacancy_id', vacancyId)
     .order('applied_at', { ascending: false });
   if (error) throw error;
-  return (data ?? []) as unknown as ApplicationWithRelations[];
+  return flattenCandidateContact<ApplicationWithRelations>(data ?? []);
 }
 
 /** Move an application to a new stage. The DB trigger logs the 'application' activity. */
@@ -460,4 +494,92 @@ export async function findOrCreateCandidateContact(input: {
   }
   await supabase.from('contact_roles').upsert({ contact_id: contactId, role: 'candidate' });
   return contactId;
+}
+
+// --- talent pool & shortlist helpers ----------------------------------------
+
+/** Distinct skills across all candidates, ordered by frequency. */
+export async function listDistinctSkills(limit = 60): Promise<string[]> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase.from('candidates').select('skills');
+  if (error) throw error;
+  const counts = new Map<string, number>();
+  for (const row of data ?? []) {
+    for (const skill of row.skills ?? []) {
+      counts.set(skill, (counts.get(skill) ?? 0) + 1);
+    }
+  }
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+    .map(([skill]) => skill);
+}
+
+export interface ApplicationWithCandidate extends ApplicationRow {
+  candidate:
+    | Pick<
+        CandidateRow,
+        | 'id'
+        | 'headline'
+        | 'skills'
+        | 'rating'
+        | 'years_experience'
+        | 'salary_expectation_ugx'
+        | 'availability'
+        | 'notes'
+      >
+    | null;
+  candidateContact: Pick<ContactRow, 'id' | 'full_name' | 'email' | 'phone_e164'> | null;
+}
+
+// Client-facing pack: fetch ONLY what the client may see. `rating` and `notes`
+// are internal assessments — never pull them into a document meant to leave the
+// building, even if the view doesn't render them today.
+const SHORTLIST_SELECT = `
+  *,
+  candidate:candidates!applications_candidate_id_fkey ( id, headline, skills, years_experience, salary_expectation_ugx, availability ),
+  candidateContact:candidates!applications_candidate_id_fkey ( contact:contacts!candidates_contact_id_fkey ( id, full_name, email, phone_e164 ) )
+`;
+
+/** Applications in a given stage — powers the shortlist pack. */
+export async function listApplicationsByStage(
+  vacancyId: string,
+  stage: ApplicationStage,
+): Promise<ApplicationWithCandidate[]> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from('applications')
+    .select(SHORTLIST_SELECT)
+    .eq('vacancy_id', vacancyId)
+    .eq('stage', stage)
+    .order('applied_at', { ascending: false });
+  if (error) throw error;
+  return flattenCandidateContact<ApplicationWithCandidate>(data ?? []);
+}
+
+/** Every application a candidate has ever made, with the vacancy they target. */
+export async function listApplicationsByCandidate(
+  candidateId: string,
+): Promise<{ id: string; vacancy_id: string; stage: ApplicationStage; vacancy_title: string | null }[]> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from('applications')
+    .select('id, vacancy_id, stage, vacancy:vacancies!applications_vacancy_id_fkey ( title )')
+    .eq('candidate_id', candidateId)
+    .order('applied_at', { ascending: false });
+  if (error) throw error;
+  return (data ?? []).map((row) => {
+    const r = row as unknown as {
+      id: string;
+      vacancy_id: string;
+      stage: ApplicationStage;
+      vacancy: { title: string } | null;
+    };
+    return {
+      id: r.id,
+      vacancy_id: r.vacancy_id,
+      stage: r.stage,
+      vacancy_title: r.vacancy?.title ?? null,
+    };
+  });
 }

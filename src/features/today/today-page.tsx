@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Target, Wallet, Sparkles, Building2, ChevronRight } from 'lucide-react';
 import { useAuth } from '@/features/auth/auth-provider';
+import { getSupabase } from '@/lib/supabase';
 import { PageHeader } from '@/components/page-header';
 import { EmptyState } from '@/components/empty-state';
 import { Money } from '@/components/money';
@@ -21,6 +22,17 @@ export function TodayPage() {
 
   const firstName = (profile?.full_name ?? '').split(' ')[0] || 'there';
   const due = data?.dueFollowUps ?? [];
+
+  const openApplication = async (applicationId: string) => {
+    const { data: application } = await getSupabase()
+      .from('applications')
+      .select('vacancy_id')
+      .eq('id', applicationId)
+      .maybeSingle();
+    if (application?.vacancy_id) {
+      void navigate(`/recruitment/${application.vacancy_id}?application=${applicationId}`);
+    }
+  };
 
   return (
     <div>
@@ -53,7 +65,7 @@ export function TodayPage() {
       </section>
 
       {/* Signals — flagged problems with a one-click action. Hidden when none. */}
-      <SignalsSection onOpenLead={setOpenLeadId} />
+      <SignalsSection onOpenApplication={(id) => void openApplication(id)} onOpenLead={setOpenLeadId} />
 
       {/* Quiet number strip — a footnote, not a hero. */}
       <div className="mt-8 grid gap-4 sm:grid-cols-3">

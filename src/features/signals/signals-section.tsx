@@ -14,11 +14,25 @@ const SEVERITY_DOT: Record<SignalSeverity, string> = {
  * one-click action (open the subject) and a dismiss. Renders nothing when
  * there is nothing to flag — an empty signals list is a good day, not a gap.
  */
-export function SignalsSection({ onOpenLead }: { onOpenLead: (id: string) => void }) {
+export function SignalsSection({
+  onOpenLead,
+  onOpenApplication,
+}: {
+  onOpenLead: (id: string) => void;
+  onOpenApplication?: (id: string) => void;
+}) {
   const { data: signals, isLoading } = useSignals();
   const dismiss = useDismissSignal();
 
   if (isLoading || !signals || signals.length === 0) return null;
+
+  const handleOpen = (signal: Signal) => {
+    if (signal.subject_type === 'lead') {
+      onOpenLead(signal.subject_id);
+    } else if (signal.subject_type === 'application' && onOpenApplication) {
+      onOpenApplication(signal.subject_id);
+    }
+  };
 
   return (
     <section className="mt-8">
@@ -34,7 +48,7 @@ export function SignalsSection({ onOpenLead }: { onOpenLead: (id: string) => voi
           <SignalRow
             key={signal.id}
             onDismiss={() => dismiss.mutate(signal.id)}
-            onOpen={() => signal.subject_type === 'lead' && onOpenLead(signal.subject_id)}
+            onOpen={() => handleOpen(signal)}
             signal={signal}
           />
         ))}
