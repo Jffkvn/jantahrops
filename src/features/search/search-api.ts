@@ -173,3 +173,30 @@ export function parseQuickLead(input: string): ParsedQuickLead | null {
   if (!before) return null;
   return { name: before, phone, rest: after || undefined };
 }
+
+export interface ContactSearchResult {
+  contactId: string;
+  fullName: string;
+  detail: string | null;
+}
+
+/**
+ * Contacts in ⌘K — the spine, so anyone in the business is reachable from
+ * anywhere without first guessing whether they are a lead or a candidate.
+ */
+export async function searchContacts(query: string, limit = 5): Promise<ContactSearchResult[]> {
+  const term = query.trim();
+  if (term.length < 2) return [];
+  const like = `%${term}%`;
+  const { data, error } = await getSupabase()
+    .from('contacts')
+    .select('id, full_name, email, job_title')
+    .or(`full_name.ilike.${like},email.ilike.${like}`)
+    .limit(limit);
+  if (error) throw error;
+  return (data ?? []).map((c) => ({
+    contactId: c.id,
+    fullName: c.full_name,
+    detail: c.job_title ?? c.email ?? null,
+  }));
+}

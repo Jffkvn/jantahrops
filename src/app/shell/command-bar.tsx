@@ -6,7 +6,13 @@ import { cn } from '@/lib/cn';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { useTheme } from '@/app/theme-provider';
 import { NAV_ITEMS } from './nav-config';
-import { searchLeads, searchVacancies, searchCandidates, parseQuickLead } from '@/features/search/search-api';
+import {
+  searchLeads,
+  searchVacancies,
+  searchCandidates,
+  searchContacts,
+  parseQuickLead,
+} from '@/features/search/search-api';
 import { stageMeta } from '@/features/leads/lead-stages';
 import { VACANCY_STATUS_LABELS } from '@/features/recruitment/recruitment-meta';
 
@@ -68,6 +74,13 @@ export function CommandBar({ open, onOpenChange }: CommandBarProps) {
     staleTime: 10_000,
   });
 
+  const { data: contactResults } = useQuery({
+    queryKey: ['cmdk-contacts', debounced],
+    queryFn: () => searchContacts(debounced),
+    enabled: open && debounced.length >= 2,
+    staleTime: 10_000,
+  });
+
   const quick = useMemo(() => parseQuickLead(query), [query]);
 
   const items = useMemo<Item[]>(() => {
@@ -120,6 +133,19 @@ export function CommandBar({ open, onOpenChange }: CommandBarProps) {
       });
     }
 
+    // Contacts — the spine. Listed after leads/candidates so the more specific
+    // record wins when someone is both.
+    for (const c of contactResults ?? []) {
+      if (list.some((i) => i.label.startsWith(c.fullName))) continue;
+      list.push({
+        id: `contact:${c.contactId}`,
+        label: c.fullName,
+        hint: c.detail ?? 'Contact',
+        icon: UserRound,
+        run: () => go(`/contacts?contact=${c.contactId}`),
+      });
+    }
+
     // Actions (always available, filtered by query text).
     const actions: Item[] = [
       { id: 'act:new-lead', label: 'New lead', hint: 'Create', icon: Plus, run: () => go('/leads?new=1') },
@@ -152,7 +178,7 @@ export function CommandBar({ open, onOpenChange }: CommandBarProps) {
     }
     return list;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, quick, leadResults, vacancyResults, candidateResults, theme]);
+  }, [query, quick, leadResults, vacancyResults, candidateResults, contactResults, theme]);
 
   useEffect(() => {
     if (open) {

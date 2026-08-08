@@ -16,11 +16,11 @@ import { RecruitmentPage } from '@/features/recruitment/recruitment-page';
 import { VacancyPipelinePage } from '@/features/recruitment/vacancy-pipeline-page';
 import { TalentPoolPage } from '@/features/recruitment/talent-pool-page';
 import { ShortlistPrintView } from '@/features/recruitment/shortlist-print-view';
+import { ContactsPage } from '@/features/directory/contacts-page';
+import { OrganisationsPage } from '@/features/directory/organisations-page';
 
 /** Placeholder routes, tagged with the phase that will build each for real. */
 const placeholders: { path: string; title: string; phase: string }[] = [
-  { path: 'contacts', title: 'Contacts', phase: 'Phase 0' },
-  { path: 'organisations', title: 'Organisations', phase: 'Phase 0' },
   { path: 'projects', title: 'Projects', phase: 'Phase 4' },
   { path: 'academy', title: 'Academy', phase: 'Phase 5' },
   { path: 'content', title: 'Content', phase: 'Phase 6' },
@@ -69,6 +69,8 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <TodayPage /> },
       { path: 'leads', element: <LeadsPage /> },
+      { path: 'contacts', element: <ContactsPage /> },
+      { path: 'organisations', element: <OrganisationsPage /> },
       { path: 'finance', element: <FinancePage /> },
       { path: 'finance/new/:type', element: <DocumentEditor /> },
       { path: 'finance/:id', element: <DocumentEditor /> },
