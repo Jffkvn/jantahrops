@@ -145,6 +145,21 @@ export function TalentPoolPage() {
         </Select>
       </div>
 
+      {/* Scale and position: with ~2,000 candidates you need to know how many
+          matched and how much of the pool you are looking at. */}
+      {!isLoading && candidates.length > 0 && (
+        <p className="mb-2 text-xs text-ink-muted">
+          <span className="num font-medium text-ink-secondary">
+            {(data?.total ?? candidates.length).toLocaleString()}
+          </span>{' '}
+          {(data?.total ?? 0) === 1 ? 'candidate' : 'candidates'}
+          {debouncedSearch || skills.length > 0 ? ' matching' : ' in the pool'}
+          {(data?.total ?? 0) > candidates.length && (
+            <> · showing the first <span className="num">{candidates.length}</span></>
+          )}
+        </p>
+      )}
+
       {isLoading ? (
         <div className="space-y-2">
           <Skeleton className="h-16 w-full rounded-card" />
@@ -202,28 +217,43 @@ function CandidateRow({
 }) {
   const contact = candidate.contact;
   const name = contact?.full_name ?? 'Unnamed candidate';
+  const skills = candidate.skills ?? [];
+  const shown = skills.slice(0, 4);
+  const extra = skills.length - shown.length;
 
   return (
-    <li className="px-4 py-3">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+    <li className="group px-4 py-3 transition-colors hover:bg-surface-sunken/40">
+      <div className="flex items-center gap-3">
+        {/* Avatar: the visual anchor that gives a long list rhythm. */}
+        <span
+          aria-hidden
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary-soft text-xs font-semibold text-primary"
+        >
+          {initials(name)}
+        </span>
+
         <button className="min-w-0 flex-1 text-left" onClick={onOpen} type="button">
-          <p className="font-medium text-ink">{name}</p>
-          <p className="mt-0.5 truncate text-sm text-ink-secondary">
-            {candidate.headline ??
-              (candidate.skills.length > 0 ? candidate.skills.slice(0, 4).join(' · ') : 'No profile yet')}
-          </p>
-          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-muted">
-            {contact?.email && <span>{contact.email}</span>}
-            {contact?.phone_e164 && <span>{formatPhoneDisplay(contact.phone_e164)}</span>}
-            {candidate.years_experience != null && <span>{candidate.years_experience} yrs</span>}
-            {candidate.availability && <span>{AVAILABILITY_LABELS[candidate.availability]}</span>}
-            {candidate.salary_expectation_ugx != null && candidate.salary_expectation_ugx > 0 && (
-              <span>{formatUGX(BigInt(candidate.salary_expectation_ugx))}</span>
+          <div className="flex items-center gap-2">
+            <p className="truncate font-medium text-ink">{name}</p>
+            {/* The 300-odd imports whose name could not be resolved. Visible so
+                they can be fixed, quiet enough not to shout. */}
+            {candidate.needs_review && (
+              <span
+                className="h-1.5 w-1.5 shrink-0 rounded-full bg-warning"
+                title={candidate.review_reason ?? 'Needs review'}
+              />
             )}
           </div>
-          {candidate.skills.length > 0 && (
-            <div className="mt-1.5 flex flex-wrap gap-1.5">
-              {candidate.skills.slice(0, 6).map((s) => (
+
+          {/* Role first — it is the most useful line for scanning. Skills are
+              shown as chips below, never repeated here. */}
+          <p className="mt-0.5 truncate text-sm text-ink-secondary">
+            {candidate.headline ?? (skills.length > 0 ? `${skills.length} skills on file` : 'No profile yet')}
+          </p>
+
+          {skills.length > 0 && (
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+              {shown.map((s) => (
                 <span
                   className="rounded-pill bg-surface-sunken px-2 py-0.5 text-xs text-ink-secondary"
                   key={s}
@@ -231,9 +261,31 @@ function CandidateRow({
                   {s}
                 </span>
               ))}
+              {extra > 0 && <span className="num text-xs text-ink-muted">+{extra}</span>}
             </div>
           )}
+
+          {/* Contact details recede: micro-text, muted, one line. */}
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-3 text-xs text-ink-muted">
+            {contact?.email && <span className="truncate">{contact.email}</span>}
+            {contact?.phone_e164 && <span>{formatPhoneDisplay(contact.phone_e164)}</span>}
+          </div>
         </button>
+
+        {/* Right rail: the facts you sort on, right-aligned and tabular. */}
+        <div className="hidden shrink-0 flex-col items-end gap-0.5 text-xs sm:flex">
+          {candidate.years_experience != null && (
+            <span className="num font-medium text-ink">{candidate.years_experience} yrs</span>
+          )}
+          {candidate.availability && (
+            <span className="text-ink-muted">{AVAILABILITY_LABELS[candidate.availability]}</span>
+          )}
+          {candidate.salary_expectation_ugx != null && candidate.salary_expectation_ugx > 0 && (
+            <span className="num text-ink-muted">
+              {formatUGX(BigInt(candidate.salary_expectation_ugx))}
+            </span>
+          )}
+        </div>
 
         {addTarget === candidate.id ? (
           <div className="flex items-center gap-2">
@@ -255,6 +307,7 @@ function CandidateRow({
           </div>
         ) : (
           <Button
+            className="opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100"
             disabled={!vacancyId}
             onClick={onAdd}
             size="sm"
@@ -268,4 +321,11 @@ function CandidateRow({
       </div>
     </li>
   );
+}
+/** Two-letter monogram for the avatar. Falls back to '?' for unresolved names. */
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  const a = parts[0]?.[0] ?? '';
+  const b = parts.length > 1 ? (parts[parts.length - 1]?.[0] ?? '') : '';
+  return (a + b).toUpperCase() || '?';
 }

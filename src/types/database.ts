@@ -342,6 +342,12 @@ export type CandidateRow = {
   source: string | null;
   notes: string | null;
   owner_id: string | null;
+  // Bulk-import provenance. Null for candidates created in-app or via the
+  // public endpoint. needs_review flags an import the tooling was unsure about
+  // (usually an unresolved name) — the CV is always attached regardless.
+  import_batch: string | null;
+  needs_review: boolean;
+  review_reason: string | null;
   created_at: string;
   updated_at: string;
 };
