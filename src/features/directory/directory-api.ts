@@ -44,9 +44,24 @@ function toContactWithMeta(rows: unknown[]): ContactWithMeta[] {
   });
 }
 
+/**
+ * `business` = everyone EXCEPT people who are only candidates.
+ *
+ * This is the default view, and the reason is a real distinction in recruitment:
+ * candidates are people you PLACE (searched by skill, moved through a pipeline,
+ * shortlisted) while contacts are people you SELL TO (an HR manager who signs an
+ * invoice). They need different tooling, which is why the Talent Pool exists
+ * separately. Without this filter, Contacts is just a worse Talent Pool —
+ * ~2,000 imported CVs drown the handful of people you actually do business with.
+ *
+ * Someone who is BOTH a candidate and a client contact still appears here: the
+ * exclusion is only for people whose sole role is `candidate`.
+ */
+export type ContactScope = ContactRole | 'all' | 'business';
+
 export interface ListContactsParams {
   search?: string;
-  role?: ContactRole | 'all';
+  role?: ContactScope;
   organisationId?: string;
   page?: number;
   pageSize?: number;
@@ -73,7 +88,14 @@ export async function listContacts(
 
   // Role lives in a junction table; resolve to ids first (PostgREST cannot
   // filter the parent by an embedded resource).
-  if (role !== 'all') {
+  if (role === 'business') {
+    // v_business_contacts does the exclusion in SQL — see the migration. Doing
+    // it client-side meant sending thousands of ids in a URL, which breaks.
+    const { data: businessIds } = await supabase.from('v_business_contacts').select('id');
+    const ids = (businessIds ?? []).map((r) => r.id);
+    if (ids.length === 0) return { rows: [], total: 0 };
+    query = query.in('id', ids);
+  } else if (role !== 'all') {
     const { data: withRole } = await supabase
       .from('contact_roles')
       .select('contact_id')

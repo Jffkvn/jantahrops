@@ -273,6 +273,11 @@ export type FinanceSummaryResult = {
   wht_credit_year_ugx: number;
 };
 
+/** Ids of contacts who are NOT candidate-only — backs the default Contacts list. */
+export type BusinessContactViewRow = {
+  id: string;
+};
+
 export type InvoiceBalanceViewRow = {
   id: string;
   organisation_id: string;
@@ -540,6 +545,7 @@ export interface Database {
     };
     Views: {
       v_invoice_balances: { Row: InvoiceBalanceViewRow; Relationships: [] };
+      v_business_contacts: { Row: BusinessContactViewRow; Relationships: [] };
     };
     Functions: {
       is_admin: { Args: Record<never, never>; Returns: boolean };

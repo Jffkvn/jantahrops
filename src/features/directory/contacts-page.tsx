@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 import { Search, UserPlus, Building2 } from 'lucide-react';
 import { PageHeader } from '@/components/page-header';
 import { Button } from '@/components/ui/button';
@@ -17,7 +17,7 @@ import { formatRelative } from '@/lib/format';
 import { useContactsList } from './use-directory';
 import { ContactDetailSheet } from './contact-detail-sheet';
 import { CreateContactSheet } from './create-contact-sheet';
-import type { ContactWithMeta } from './directory-api';
+import type { ContactWithMeta, ContactScope } from './directory-api';
 import type { ContactRole } from '@/types/database';
 
 const ROLE_LABELS: Record<ContactRole, string> = {
@@ -41,11 +41,16 @@ const PAGE_SIZE = 25;
 export function ContactsPage() {
   const [search, setSearch] = useState('');
   const [debounced, setDebounced] = useState('');
-  const [role, setRole] = useState<ContactRole | 'all'>('all');
+  // Defaults to 'business' — everyone EXCEPT candidate-only people. Candidates
+  // live in the Talent Pool, which has the tooling they need (skill search, CV,
+  // add-to-vacancy). Without this default, ~2,000 imported CVs bury the handful
+  // of people you actually do business with.
+  const [role, setRole] = useState<ContactScope>('business');
   const [page, setPage] = useState(0);
   const [openId, setOpenId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
 
   // Deep-link: ?contact=<id> opens a profile (used by ⌘K and other modules).
   useEffect(() => {
@@ -85,7 +90,7 @@ export function ContactsPage() {
             New contact
           </Button>
         }
-        description="Every person the business knows — leads, candidates, clients and partners."
+        description="Clients, leads and partners — the people you do business with."
         title="Contacts"
       />
 
@@ -102,16 +107,17 @@ export function ContactsPage() {
 
         <Select
           onValueChange={(v) => {
-            setRole(v as ContactRole | 'all');
+            setRole(v as ContactScope);
             setPage(0);
           }}
           value={role}
         >
-          <SelectTrigger className="w-[170px]">
-            <SelectValue placeholder="All roles" />
+          <SelectTrigger className="w-[190px]">
+            <SelectValue placeholder="Business contacts" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All roles</SelectItem>
+            <SelectItem value="business">Business contacts</SelectItem>
+            <SelectItem value="all">Everyone (incl. candidates)</SelectItem>
             {(Object.keys(ROLE_LABELS) as ContactRole[]).map((r) => (
               <SelectItem key={r} value={r}>
                 {ROLE_LABELS[r]}
@@ -121,11 +127,39 @@ export function ContactsPage() {
         </Select>
       </div>
 
+      {/* Say plainly why this list is short — otherwise "9 contacts" next to
+          "1,962 candidates" reads as a bug rather than a deliberate split. */}
+      {role === 'business' && (
+        <p className="mb-3 rounded-control border border-border bg-surface-sunken/50 px-3 py-2 text-xs text-ink-secondary">
+          Showing people you do business with — clients, leads and partners.
+          Candidates live in the{' '}
+          <button
+            className="font-medium text-primary hover:underline"
+            onClick={() => void navigate('/talent')}
+            type="button"
+          >
+            Talent Pool
+          </button>
+          , where you can search them by skill.{' '}
+          <button
+            className="font-medium text-primary hover:underline"
+            onClick={() => {
+              setRole('all');
+              setPage(0);
+            }}
+            type="button"
+          >
+            Show everyone
+          </button>
+          .
+        </p>
+      )}
+
       {!isLoading && total > 0 && (
         <p className="mb-2 text-xs text-ink-muted">
           <span className="num font-medium text-ink-secondary">{total.toLocaleString()}</span>{' '}
           {total === 1 ? 'contact' : 'contacts'}
-          {debounced || role !== 'all' ? ' matching' : ''}
+          {debounced || role !== 'business' ? ' matching' : ''}
           {pageCount > 1 && (
             <>
               {' · page '}
@@ -143,9 +177,11 @@ export function ContactsPage() {
         </div>
       ) : rows.length === 0 ? (
         <div className="rounded-card border border-border bg-surface p-12 text-center text-sm text-ink-secondary">
-          {debounced || role !== 'all'
-            ? 'No contacts match your filters.'
-            : 'No contacts yet. Add one, or they will arrive from the website and CV imports.'}
+          {debounced
+            ? 'No contacts match your search.'
+            : role === 'business'
+              ? 'No business contacts yet. They appear as leads convert and you invoice companies — or add one manually.'
+              : 'No contacts yet.'}
         </div>
       ) : (
         <>
