@@ -1,5 +1,4 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { getSupabase } from '@/lib/supabase';
 import {
   listLeads,
   listBoardLeads,
@@ -23,22 +22,8 @@ const keys = {
   timeline: (id: string) => ['leads', 'timeline', id] as const,
 };
 
-/** Team members, for the owner picker and filter. */
-export function useTeam() {
-  return useQuery({
-    queryKey: ['team'],
-    staleTime: 5 * 60_000,
-    queryFn: async () => {
-      const { data, error } = await getSupabase()
-        .from('profiles')
-        .select('id, full_name, email')
-        .eq('is_active', true)
-        .order('full_name');
-      if (error) throw error;
-      return data;
-    },
-  });
-}
+/** Team members, for the owner picker and filter. Defined once in features/team. */
+export { useTeam } from '@/features/team/use-team';
 
 export function useLeadsList(params: ListLeadsParams) {
   return useQuery({

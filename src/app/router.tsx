@@ -18,13 +18,13 @@ import { TalentPoolPage } from '@/features/recruitment/talent-pool-page';
 import { ShortlistPrintView } from '@/features/recruitment/shortlist-print-view';
 import { ContactsPage } from '@/features/directory/contacts-page';
 import { OrganisationsPage } from '@/features/directory/organisations-page';
+import { TasksPage } from '@/features/tasks/tasks-page';
 
 /** Placeholder routes, tagged with the phase that will build each for real. */
 const placeholders: { path: string; title: string; phase: string }[] = [
   { path: 'projects', title: 'Projects', phase: 'Phase 4' },
   { path: 'academy', title: 'Academy', phase: 'Phase 5' },
   { path: 'content', title: 'Content', phase: 'Phase 6' },
-  { path: 'tasks', title: 'Tasks', phase: 'Phase 1' },
   { path: 'reports', title: 'Reports', phase: 'Phase 6' },
   { path: 'settings', title: 'Settings', phase: 'Phase 5' },
 ];
@@ -78,6 +78,7 @@ export const router = createBrowserRouter([
       { path: 'recruitment', element: <RecruitmentPage /> },
       { path: 'recruitment/:vacancyId', element: <VacancyPipelinePage /> },
       { path: 'talent', element: <TalentPoolPage /> },
+      { path: 'tasks', element: <TasksPage /> },
       ...placeholders.map((p) => ({
         path: p.path,
         element: <PlaceholderPage phase={p.phase} title={p.title} />,

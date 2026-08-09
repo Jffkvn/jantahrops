@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
-import { Target, Wallet, Sparkles, Building2, ChevronRight } from 'lucide-react';
+import { Target, Wallet, Sparkles, Building2, ChevronRight, ListTodo } from 'lucide-react';
 import { useAuth } from '@/features/auth/auth-provider';
 import { getSupabase } from '@/lib/supabase';
 import { PageHeader } from '@/components/page-header';
@@ -11,6 +11,8 @@ import { formatDate } from '@/lib/format';
 import { NextActionDot } from '@/features/leads/next-action-dot';
 import { LeadDetailSheet } from '@/features/leads/lead-detail-sheet';
 import { SignalsSection } from '@/features/signals/signals-section';
+import { DayTasksSection } from '@/features/tasks/day-tasks-section';
+import { useTaskCounts } from '@/features/tasks/use-tasks';
 import { useDayView } from './use-today';
 import type { LeadWithRelations } from '@/features/leads/leads-api';
 
@@ -18,10 +20,15 @@ export function TodayPage() {
   const { profile } = useAuth();
   const navigate = useNavigate();
   const { data, isLoading } = useDayView();
+  const { data: taskCounts } = useTaskCounts();
   const [openLeadId, setOpenLeadId] = useState<string | null>(null);
 
   const firstName = (profile?.full_name ?? '').split(' ')[0] || 'there';
   const due = data?.dueFollowUps ?? [];
+  // "All caught up" has to mean caught up on everything. Tasks render in their
+  // own section below, so claiming a clear morning while three are overdue
+  // would make the whole page untrustworthy.
+  const tasksDue = (taskCounts?.dueToday ?? 0) + (taskCounts?.overdue ?? 0);
 
   const openApplication = async (applicationId: string) => {
     const { data: application } = await getSupabase()
@@ -50,11 +57,17 @@ export function TodayPage() {
             <Skeleton className="h-16 w-full rounded-card" />
           </div>
         ) : due.length === 0 ? (
-          <EmptyState
-            description="No follow-ups are due today. Set a next action on a lead and it will surface here when it's time."
-            headline="You're all caught up"
-            icon={<Sparkles className="h-6 w-6" />}
-          />
+          tasksDue > 0 ? (
+            <p className="rounded-card border border-border bg-surface px-4 py-3 text-sm text-ink-secondary">
+              No follow-ups are due — your tasks are below.
+            </p>
+          ) : (
+            <EmptyState
+              description="No follow-ups are due today. Set a next action on a lead and it will surface here when it's time."
+              headline="You're all caught up"
+              icon={<Sparkles className="h-6 w-6" />}
+            />
+          )
         ) : (
           <ul className="space-y-2">
             {due.map((lead) => (
@@ -67,8 +80,11 @@ export function TodayPage() {
       {/* Signals — flagged problems with a one-click action. Hidden when none. */}
       <SignalsSection onOpenApplication={(id) => void openApplication(id)} onOpenLead={setOpenLeadId} />
 
+      {/* Tasks due today or late. Renders nothing when there are none. */}
+      <DayTasksSection />
+
       {/* Quiet number strip — a footnote, not a hero. */}
-      <div className="mt-8 grid gap-4 sm:grid-cols-3">
+      <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Stat
           icon={Target}
           label="Open leads"
@@ -85,9 +101,16 @@ export function TodayPage() {
         />
         <Stat
           icon={Sparkles}
-          label="Due today"
+          label="Follow-ups due"
           loading={isLoading}
           value={data ? String(data.counts.dueToday) : '—'}
+        />
+        <Stat
+          icon={ListTodo}
+          label="Open tasks"
+          loading={!taskCounts}
+          onClick={() => void navigate('/tasks')}
+          value={taskCounts ? String(taskCounts.open) : '—'}
         />
       </div>
 

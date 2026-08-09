@@ -46,21 +46,7 @@ const keys = {
   candidatesPrefix: ['recruitment', 'candidates'] as const,
 };
 
-export function useTeam() {
-  return useQuery({
-    queryKey: ['team'],
-    staleTime: 5 * 60_000,
-    queryFn: async () => {
-      const { data, error } = await getSupabase()
-        .from('profiles')
-        .select('id, full_name, email')
-        .eq('is_active', true)
-        .order('full_name');
-      if (error) throw error;
-      return data;
-    },
-  });
-}
+export { useTeam } from '@/features/team/use-team';
 
 export function useVacanciesList(params: ListVacanciesParams) {
   return useQuery({ queryKey: keys.vacancies(params), queryFn: () => listVacancies(params) });
