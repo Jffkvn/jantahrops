@@ -24,6 +24,12 @@ interface AuthContextValue {
   signOut: () => Promise<void>;
   requestPasswordReset: (email: string) => Promise<AuthResult>;
   updatePassword: (password: string) => Promise<AuthResult>;
+  /**
+   * Re-read the signed-in user's own profile. Settings edits their name and
+   * phone; without this the greeting and avatar keep the old values until the
+   * next full reload, which reads as the save not having worked.
+   */
+  refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -138,6 +144,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setProfile(null);
   }, [supabase]);
 
+  const refreshProfile = useCallback(async () => {
+    if (!user) return;
+    const next = await loadProfile(user);
+    if (next) setProfile(next);
+  }, [user, loadProfile]);
+
   const requestPasswordReset = useCallback(
     async (email: string): Promise<AuthResult> => {
       // Always reports success. Reporting failure for an unknown address would
@@ -172,8 +184,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signOut,
       requestPasswordReset,
       updatePassword,
+      refreshProfile,
     }),
-    [user, profile, loading, signIn, signOut, requestPasswordReset, updatePassword],
+    [
+      user,
+      profile,
+      loading,
+      signIn,
+      signOut,
+      requestPasswordReset,
+      updatePassword,
+      refreshProfile,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
