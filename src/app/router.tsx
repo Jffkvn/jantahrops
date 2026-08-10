@@ -21,10 +21,10 @@ import { OrganisationsPage } from '@/features/directory/organisations-page';
 import { TasksPage } from '@/features/tasks/tasks-page';
 import { SettingsPage } from '@/features/settings/settings-page';
 import { ProjectsPage } from '@/features/projects/projects-page';
+import { AcademyPage } from '@/features/academy/academy-page';
 
 /** Placeholder routes, tagged with the phase that will build each for real. */
 const placeholders: { path: string; title: string; phase: string }[] = [
-  { path: 'academy', title: 'Academy', phase: 'Phase 5' },
   { path: 'content', title: 'Content', phase: 'Phase 6' },
   { path: 'reports', title: 'Reports', phase: 'Phase 6' },
 ];
@@ -81,6 +81,7 @@ export const router = createBrowserRouter([
       { path: 'tasks', element: <TasksPage /> },
       { path: 'settings', element: <SettingsPage /> },
       { path: 'projects', element: <ProjectsPage /> },
+      { path: 'academy', element: <AcademyPage /> },
       ...placeholders.map((p) => ({
         path: p.path,
         element: <PlaceholderPage phase={p.phase} title={p.title} />,

@@ -37,6 +37,16 @@ export type ProjectStage =
   | 'completed'
   | 'archived';
 export type MilestoneStatus = 'pending' | 'in_progress' | 'done' | 'blocked';
+export type DeliveryMode = 'live_online' | 'in_person' | 'self_paced' | 'hybrid';
+export type CohortStatus = 'planned' | 'open' | 'running' | 'completed' | 'cancelled';
+/** Entitlement is a state, not a checkbox — see the academy migration. */
+export type EnrolmentStatus =
+  | 'registered'
+  | 'invoiced'
+  | 'paid'
+  | 'active'
+  | 'completed'
+  | 'dropped';
 
 export type DocumentType = 'quote' | 'lpo' | 'invoice' | 'receipt';
 export type DocumentStatus =
@@ -320,6 +330,84 @@ export type ProjectPnlViewRow = {
   estimated_profit_ugx: number | null;
 };
 
+export type CourseRow = {
+  id: string;
+  title: string;
+  slug: string;
+  summary: string | null;
+  description: string | null;
+  outline: unknown;
+  price_ugx: number;
+  corporate_price_ugx: number | null;
+  duration_label: string | null;
+  /** Drives certificate expiry once slice 2 lands. Null = does not expire. */
+  retake_interval_months: number | null;
+  is_public: boolean;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CohortRow = {
+  id: string;
+  course_id: string;
+  name: string;
+  start_date: string | null;
+  end_date: string | null;
+  delivery_mode: DeliveryMode;
+  capacity: number | null;
+  location: string | null;
+  meeting_url: string | null;
+  facilitator_id: string | null;
+  status: CohortStatus;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type EnrolmentRow = {
+  id: string;
+  cohort_id: string;
+  contact_id: string;
+  organisation_id: string | null;
+  status: EnrolmentStatus;
+  /** Set by a trigger when the linked invoice settles; cleared on reversal. */
+  entitled_at: string | null;
+  source: string | null;
+  completed_at: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CohortSessionRow = {
+  id: string;
+  cohort_id: string;
+  title: string;
+  session_date: string | null;
+  position: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AttendanceRow = {
+  id: string;
+  session_id: string;
+  enrolment_id: string;
+  is_present: boolean;
+  noted_at: string;
+  noted_by: string | null;
+};
+
+export type CohortSummaryViewRow = {
+  cohort_id: string;
+  enrolled: number;
+  entitled: number;
+  unbilled: number;
+  /** Null when the cohort is uncapped. */
+  seats_left: number | null;
+};
+
 export type FinanceFileRow = {
   id: string;
   bucket: string;
@@ -502,6 +590,11 @@ type ExpenseInsert = Insertable<ExpenseRow, 'category' | 'amount_ugx' | 'incurre
 type ProjectInsert = Insertable<ProjectRow, 'organisation_id' | 'name'>;
 type ProjectMilestoneInsert = Insertable<ProjectMilestoneRow, 'project_id' | 'title'>;
 type TimeEntryInsert = Insertable<TimeEntryRow, 'project_id' | 'work_date' | 'days'>;
+type CourseInsert = Insertable<CourseRow, 'title' | 'slug'>;
+type CohortInsert = Insertable<CohortRow, 'course_id' | 'name'>;
+type EnrolmentInsert = Insertable<EnrolmentRow, 'cohort_id' | 'contact_id'>;
+type CohortSessionInsert = Insertable<CohortSessionRow, 'cohort_id' | 'title'>;
+type AttendanceInsert = Insertable<AttendanceRow, 'session_id' | 'enrolment_id'>;
 type FinanceFileInsert = Insertable<FinanceFileRow, 'path' | 'filename' | 'mime' | 'size_bytes'>;
 type VacancyInsert = Insertable<VacancyRow, 'title' | 'slug'>;
 type CandidateInsert = Insertable<CandidateRow, 'contact_id'>;
@@ -614,6 +707,36 @@ export interface Database {
         Update: Partial<Omit<TimeEntryRow, 'id' | 'created_at'>>;
         Relationships: [];
       };
+      courses: {
+        Row: CourseRow;
+        Insert: CourseInsert;
+        Update: Partial<Omit<CourseRow, 'id' | 'created_at'>>;
+        Relationships: [];
+      };
+      cohorts: {
+        Row: CohortRow;
+        Insert: CohortInsert;
+        Update: Partial<Omit<CohortRow, 'id' | 'created_at'>>;
+        Relationships: [];
+      };
+      enrolments: {
+        Row: EnrolmentRow;
+        Insert: EnrolmentInsert;
+        Update: Partial<Omit<EnrolmentRow, 'id' | 'created_at'>>;
+        Relationships: [];
+      };
+      cohort_sessions: {
+        Row: CohortSessionRow;
+        Insert: CohortSessionInsert;
+        Update: Partial<Omit<CohortSessionRow, 'id' | 'created_at'>>;
+        Relationships: [];
+      };
+      attendance: {
+        Row: AttendanceRow;
+        Insert: AttendanceInsert;
+        Update: Partial<Omit<AttendanceRow, 'id'>>;
+        Relationships: [];
+      };
       finance_files: {
         Row: FinanceFileRow;
         Insert: FinanceFileInsert;
@@ -656,9 +779,11 @@ export interface Database {
       v_business_contacts: { Row: BusinessContactViewRow; Relationships: [] };
       v_candidate_search: { Row: CandidateSearchViewRow; Relationships: [] };
       v_project_pnl: { Row: ProjectPnlViewRow; Relationships: [] };
+      v_cohort_summary: { Row: CohortSummaryViewRow; Relationships: [] };
     };
     Functions: {
       is_admin: { Args: Record<never, never>; Returns: boolean };
+      is_staff: { Args: Record<never, never>; Returns: boolean };
       generate_signals: { Args: Record<never, never>; Returns: undefined };
       next_document_number: { Args: { p_type: DocumentType }; Returns: string };
       issue_document: { Args: { p_doc_id: string }; Returns: string };
@@ -686,6 +811,9 @@ export interface Database {
       availability_status: AvailabilityStatus;
       project_stage: ProjectStage;
       milestone_status: MilestoneStatus;
+      delivery_mode: DeliveryMode;
+      cohort_status: CohortStatus;
+      enrolment_status: EnrolmentStatus;
     };
     CompositeTypes: Record<never, never>;
   };
