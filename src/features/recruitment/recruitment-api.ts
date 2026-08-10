@@ -205,9 +205,19 @@ export interface ListCandidatesResult {
 }
 
 /**
- * Server-side list: search over headline/skills via the FTS tsvector, plus the
- * contact's name resolved through a contacts id-list lookup (PostgREST cannot
- * filter an embedded resource directly).
+ * Server-side list, filtered/counted/paged entirely in Postgres via
+ * `v_candidate_search`.
+ *
+ * The filtering cannot happen in the client. PostgREST caps every response at
+ * 1,000 rows and cannot filter on an embedded resource, so the previous shape —
+ * fetch matching ids, send them back as an `in.(...)` list — both truncated
+ * silently past 1,000 candidates and built a URL from thousands of UUIDs. It
+ * also compared contact ids against candidate ids, so name search matched
+ * nothing at all. The view exists to make all of that the database's problem.
+ *
+ * Two round trips: the view decides WHICH candidates and in what order, then
+ * the full rows (with their embedded contact and owner) are fetched for just
+ * that page — never more than `pageSize` ids in a URL.
  */
 export async function listCandidates(
   params: ListCandidatesParams = {},
@@ -215,33 +225,39 @@ export async function listCandidates(
   const supabase = getSupabase();
   const { search = '', skills = [], available, page = 0, pageSize = 25 } = params;
 
-  let query = supabase.from('candidates').select(CANDIDATE_SELECT, { count: 'exact' });
+  let idQuery = supabase.from('v_candidate_search').select('id', { count: 'exact' });
 
-  if (available !== undefined) query = query.eq('is_available', available);
-  if (skills.length > 0) query = query.contains('skills', skills);
+  if (available !== undefined) idQuery = idQuery.eq('is_available', available);
+  if (skills.length > 0) idQuery = idQuery.contains('skills', skills);
 
   const term = search.trim();
   if (term) {
-    const [{ data: nameMatches }, { data: ownMatches }] = await Promise.all([
-      supabase.from('contacts').select('id').ilike('full_name', `%${term}%`),
-      supabase.from('candidates').select('id').textSearch('search_tsv', term, {
-        type: 'plain',
-        config: 'simple',
-      }),
-    ]);
-    const contactIds = (nameMatches ?? []).map((c) => c.id);
-    const ownIds = (ownMatches ?? []).map((c) => c.id);
-    const ids = new Set([...contactIds, ...ownIds]);
-    if (ids.size === 0) return { rows: [], total: 0 };
-    query = query.in('id', [...ids]);
+    // search_text is already lowercased in the view; lowercase the needle so an
+    // ILIKE on an indexed lower(...) expression stays sargable.
+    idQuery = idQuery.ilike('search_text', `%${term.toLowerCase()}%`);
   }
 
   const from = page * pageSize;
-  query = query.order('created_at', { ascending: false }).range(from, from + pageSize - 1);
+  const {
+    data: idRows,
+    error: idError,
+    count,
+  } = await idQuery.order('created_at', { ascending: false }).range(from, from + pageSize - 1);
+  if (idError) throw idError;
 
-  const { data, error, count } = await query;
+  const ids = (idRows ?? []).map((r) => r.id);
+  if (ids.length === 0) return { rows: [], total: count ?? 0 };
+
+  const { data, error } = await supabase.from('candidates').select(CANDIDATE_SELECT).in('id', ids);
   if (error) throw error;
-  return { rows: (data ?? []) as unknown as CandidateWithRelations[], total: count ?? 0 };
+
+  // `in` does not preserve order, and the page's ordering is the view's.
+  const byId = new Map((data ?? []).map((row) => [(row as { id: string }).id, row]));
+  const rows = ids
+    .map((id) => byId.get(id))
+    .filter((row): row is NonNullable<typeof row> => row !== undefined);
+
+  return { rows: rows as unknown as CandidateWithRelations[], total: count ?? 0 };
 }
 
 export async function getCandidate(id: string): Promise<CandidateWithRelations | null> {

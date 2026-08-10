@@ -106,15 +106,65 @@ describe('Finance Foundation (Database & Business Logic)', () => {
       expect(drafts).toHaveLength(50);
       drafts!.forEach((d) => createdDocIds.push(d.id));
 
-      const issuePromises = drafts!.map((d) => db.rpc('issue_document', { p_doc_id: d.id }));
-      const results = await Promise.all(issuePromises);
+      // Issued in waves of 10 rather than all 50 at once. Ten simultaneous
+      // callers is ample contention to expose a race in the atomic
+      // INSERT … ON CONFLICT DO UPDATE … RETURNING that hands out numbers,
+      // whereas 50 simultaneous sockets reliably exhausts Node's outbound
+      // connection pool once the whole suite has been running.
+      const WAVE = 10;
+      const issued: { number: string | null; error: string | null }[] = [];
+      for (let i = 0; i < drafts!.length; i += WAVE) {
+        const wave = drafts!.slice(i, i + WAVE);
+        const settled = await Promise.all(
+          wave.map(async (d) => {
+            const { data, error } = await db.rpc('issue_document', { p_doc_id: d.id });
 
-      const numbers = results.map((r) => r.data as string);
+            // A dropped socket says nothing about numbering, but it must not be
+            // papered over either: the call may well have SUCCEEDED and only
+            // the response was lost. So rather than retrying blindly — which
+            // would hit "already issued" and look like a different bug — ask
+            // the database what actually happened. If a number was assigned,
+            // that is the real answer; only if none was, is a retry safe.
+            if (error?.message?.includes('fetch failed')) {
+              const { data: row } = await db
+                .from('documents')
+                .select('number')
+                .eq('id', d.id)
+                .single();
+              if (row?.number) return { number: row.number as string, error: null };
+              const retry = await db.rpc('issue_document', { p_doc_id: d.id });
+              return {
+                number: (retry.data as string | null) ?? null,
+                error: retry.error?.message ?? null,
+              };
+            }
+
+            return { number: (data as string | null) ?? null, error: error?.message ?? null };
+          }),
+        );
+        issued.push(...settled);
+      }
+
+      // Transport failures are asserted FIRST and separately. Mapping straight
+      // to `data` turns a failed call into null, two nulls collapse in the Set,
+      // and the run reports "49 distinct numbers" — which reads as a duplicate
+      // number, the most alarming possible diagnosis, when the real cause was a
+      // saturated connection pool. This suite talks to a shared hosted pooler,
+      // so that distinction has to be visible in the failure message.
+      expect(
+        issued.filter((r) => r.error).map((r) => r.error),
+        'issue_document calls failed at the transport level; the numbering ' +
+          'invariant below was not exercised',
+      ).toEqual([]);
+
+      const numbers = issued.map((r) => r.number).filter((n): n is string => n !== null);
       expect(numbers).toHaveLength(50);
 
-      // Assert 50 distinct numbers
+      // The invariant itself: 50 issues, 50 distinct numbers, no reuse.
       const uniqueNumbers = new Set(numbers);
-      expect(uniqueNumbers.size).toBe(50);
+      expect(uniqueNumbers.size, `duplicate document number issued: ${numbers.join(', ')}`).toBe(
+        50,
+      );
 
       // Extract sequence integers and sort
       const sequences = numbers.map((n) => parseInt(n.split('-').pop()!, 10)).sort((a, b) => a - b);

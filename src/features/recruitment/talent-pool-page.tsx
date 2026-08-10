@@ -27,11 +27,14 @@ import { CreateCandidateSheet } from './create-candidate-sheet';
 import { CandidateDetailSheet } from './candidate-detail-sheet';
 import type { CandidateWithRelations, ListCandidatesParams } from './recruitment-api';
 
+const PAGE_SIZE = 25;
+
 export function TalentPoolPage() {
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [skills, setSkills] = useState<string[]>([]);
   const [availableOnly, setAvailableOnly] = useState(false);
+  const [page, setPage] = useState(0);
   const [vacancyId, setVacancyId] = useState<string>('');
   const [addTarget, setAddTarget] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
@@ -53,7 +56,10 @@ export function TalentPoolPage() {
   const createApplication = useCreateApplication();
 
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearch(search), 250);
+    const t = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(0);
+    }, 250);
     return () => clearTimeout(t);
   }, [search]);
 
@@ -61,14 +67,17 @@ export function TalentPoolPage() {
     () => ({
       search: debouncedSearch,
       skills,
-      pageSize: 100,
+      page,
+      pageSize: PAGE_SIZE,
       ...(availableOnly ? { available: true } : {}),
     }),
-    [debouncedSearch, skills, availableOnly],
+    [debouncedSearch, skills, availableOnly, page],
   );
   const { data, isLoading } = useCandidatesList(candidatesParams);
 
   const candidates = data?.rows ?? [];
+  const total = data?.total ?? 0;
+  const pageCount = Math.ceil(total / PAGE_SIZE);
   const openVacancies = vacanciesData?.rows ?? [];
 
   const skillOptions = useMemo(() => {
@@ -109,8 +118,13 @@ export function TalentPoolPage() {
           />
         </div>
 
+        {/* Every filter resets to page 1 — landing on page 40 of a 2-page
+            result set shows an empty list and reads as "no matches". */}
         <Select
-          onValueChange={(v) => setSkills(v === 'all' ? [] : [v])}
+          onValueChange={(v) => {
+            setSkills(v === 'all' ? [] : [v]);
+            setPage(0);
+          }}
           value={skills[0] ?? 'all'}
         >
           <SelectTrigger className="w-[180px]">
@@ -127,7 +141,13 @@ export function TalentPoolPage() {
         </Select>
 
         <div className="flex items-center gap-2 rounded-control border border-border px-3 py-1.5">
-          <Switch checked={availableOnly} onCheckedChange={setAvailableOnly} />
+          <Switch
+            checked={availableOnly}
+            onCheckedChange={(v) => {
+              setAvailableOnly(v);
+              setPage(0);
+            }}
+          />
           <span className="text-sm text-ink-secondary">Available</span>
         </div>
 
@@ -146,16 +166,18 @@ export function TalentPoolPage() {
       </div>
 
       {/* Scale and position: with ~2,000 candidates you need to know how many
-          matched and how much of the pool you are looking at. */}
-      {!isLoading && candidates.length > 0 && (
+          matched and where in the pool you are. */}
+      {!isLoading && total > 0 && (
         <p className="mb-2 text-xs text-ink-muted">
-          <span className="num font-medium text-ink-secondary">
-            {(data?.total ?? candidates.length).toLocaleString()}
-          </span>{' '}
-          {(data?.total ?? 0) === 1 ? 'candidate' : 'candidates'}
-          {debouncedSearch || skills.length > 0 ? ' matching' : ' in the pool'}
-          {(data?.total ?? 0) > candidates.length && (
-            <> · showing the first <span className="num">{candidates.length}</span></>
+          <span className="num font-medium text-ink-secondary">{total.toLocaleString()}</span>{' '}
+          {total === 1 ? 'candidate' : 'candidates'}
+          {debouncedSearch || skills.length > 0 || availableOnly ? ' matching' : ' in the pool'}
+          {pageCount > 1 && (
+            <>
+              {' · page '}
+              <span className="num">{page + 1}</span> of{' '}
+              <span className="num">{pageCount.toLocaleString()}</span>
+            </>
           )}
         </p>
       )}
@@ -173,19 +195,48 @@ export function TalentPoolPage() {
             : 'No candidates yet. Add one to start building your talent pool.'}
         </div>
       ) : (
-        <ul className="divide-y divide-border rounded-card border border-border bg-surface">
-          {candidates.map((candidate) => (
-            <CandidateRow
-              addTarget={addTarget}
-              candidate={candidate}
-              key={candidate.id}
-              onAdd={() => setAddTarget(candidate.id)}
-              onAddToVacancy={() => void addToVacancy(candidate.id)}
-              onOpen={() => setOpenCandidateId(candidate.id)}
-              vacancyId={vacancyId}
-            />
-          ))}
-        </ul>
+        <>
+          <ul className="divide-y divide-border rounded-card border border-border bg-surface">
+            {candidates.map((candidate) => (
+              <CandidateRow
+                addTarget={addTarget}
+                candidate={candidate}
+                key={candidate.id}
+                onAdd={() => setAddTarget(candidate.id)}
+                onAddToVacancy={() => void addToVacancy(candidate.id)}
+                onOpen={() => setOpenCandidateId(candidate.id)}
+                vacancyId={vacancyId}
+              />
+            ))}
+          </ul>
+
+          {pageCount > 1 && (
+            <div className="mt-3 flex items-center justify-between text-sm text-ink-muted">
+              <span className="num">
+                {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} of{' '}
+                {total.toLocaleString()}
+              </span>
+              <div className="flex gap-2">
+                <Button
+                  disabled={page === 0}
+                  onClick={() => setPage((p) => p - 1)}
+                  size="sm"
+                  variant="secondary"
+                >
+                  Previous
+                </Button>
+                <Button
+                  disabled={page >= pageCount - 1}
+                  onClick={() => setPage((p) => p + 1)}
+                  size="sm"
+                  variant="secondary"
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       <CreateCandidateSheet onOpenChange={setCreateOpen} open={createOpen} />

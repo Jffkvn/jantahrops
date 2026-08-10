@@ -278,6 +278,27 @@ export type BusinessContactViewRow = {
   id: string;
 };
 
+/**
+ * Candidates joined to their contact, with everything searchable flattened into
+ * one lowercased column. Backs Talent Pool filtering, ordering, counting and
+ * paging — all of which must happen in Postgres, not the client.
+ */
+export type CandidateSearchViewRow = {
+  id: string;
+  contact_id: string | null;
+  owner_id: string | null;
+  headline: string | null;
+  skills: string[] | null;
+  years_experience: number | null;
+  availability: AvailabilityStatus | null;
+  salary_expectation_ugx: number | null;
+  is_available: boolean;
+  needs_review: boolean;
+  created_at: string;
+  full_name: string | null;
+  search_text: string;
+};
+
 export type InvoiceBalanceViewRow = {
   id: string;
   organisation_id: string;
@@ -546,6 +567,7 @@ export interface Database {
     Views: {
       v_invoice_balances: { Row: InvoiceBalanceViewRow; Relationships: [] };
       v_business_contacts: { Row: BusinessContactViewRow; Relationships: [] };
+      v_candidate_search: { Row: CandidateSearchViewRow; Relationships: [] };
     };
     Functions: {
       is_admin: { Args: Record<never, never>; Returns: boolean };
