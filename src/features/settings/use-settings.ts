@@ -18,6 +18,9 @@ export function useUpdateCompanyProfile() {
     onSuccess: () => {
       // Every issued document reads this row, and the print view caches it.
       void qc.invalidateQueries({ queryKey: ['company-profile'] });
+      // The internal day rate lives here too, and every project's estimated
+      // profit is computed from it.
+      void qc.invalidateQueries({ queryKey: ['projects'] });
     },
   });
 }

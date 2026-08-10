@@ -73,14 +73,23 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  if (createdDocIds.length > 0) {
-    await db.from('documents').delete().in('id', createdDocIds);
-  }
   if (createdExpenseIds.length > 0) {
     await db.from('expenses').delete().in('id', createdExpenseIds);
   }
   if (testOrgId) {
-    await db.from('organisations').delete().eq('id', testOrgId);
+    // Sweep by ORGANISATION, not by the ids this file created.
+    //
+    // Settling an invoice in full makes the database generate a receipt, and
+    // that receipt is not in createdDocIds. It therefore survived, the
+    // organisation delete failed on the foreign key, nobody checked the error,
+    // and every run left a client org and a receipt behind in the live
+    // database — 21 of them by 9 Aug, cluttering the organisation picker and
+    // burning invoice numbers out of the production sequence.
+    await db.from('documents').delete().eq('organisation_id', testOrgId);
+
+    const { error } = await db.from('organisations').delete().eq('id', testOrgId);
+    // Fail loudly rather than leaking into the user's real data again.
+    if (error) throw new Error(`finance-money cleanup left an organisation behind: ${error.message}`);
   }
 });
 

@@ -9,6 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Skeleton } from '@/components/ui/skeleton';
 import { normalizeUgandanPhone } from '@/lib/phone';
+import { formatUGX, parseUGX } from '@/lib/format';
 import { useAuth } from '@/features/auth/auth-provider';
 import { useCompanyProfile } from '@/features/finance/use-finance';
 import { useUpdateCompanyProfile } from './use-settings';
@@ -24,6 +25,7 @@ type FormState = {
   vat_registered: boolean;
   vat_rate_pct: string;
   wht_rate_pct: string;
+  internal_day_rate: string;
 };
 
 const EMPTY: FormState = {
@@ -37,6 +39,7 @@ const EMPTY: FormState = {
   vat_registered: true,
   vat_rate_pct: '18',
   wht_rate_pct: '6',
+  internal_day_rate: '',
 };
 
 /**
@@ -70,6 +73,8 @@ export function CompanyProfileForm() {
       vat_registered: company.vat_registered,
       vat_rate_pct: String(company.vat_rate_bp / 100),
       wht_rate_pct: String(company.wht_rate_bp / 100),
+      internal_day_rate:
+        company.internal_day_rate_ugx === null ? '' : String(company.internal_day_rate_ugx),
     });
   }, [company]);
 
@@ -86,6 +91,15 @@ export function CompanyProfileForm() {
     const whtBp = pctToBp(form.wht_rate_pct);
     if (vatBp === null) next.vat_rate_pct = 'Enter a percentage between 0 and 100.';
     if (whtBp === null) next.wht_rate_pct = 'Enter a percentage between 0 and 100.';
+
+    // Blank is meaningful here: it means "not set", and project profit is then
+    // shown as unavailable rather than guessed.
+    const rateRaw = form.internal_day_rate.trim();
+    const dayRate = rateRaw ? parseUGX(rateRaw) : null;
+    if (rateRaw && (dayRate === null || dayRate <= 0n)) {
+      next.internal_day_rate = 'Enter a whole amount in shillings, e.g. 250,000.';
+    }
+
     setErrors(next);
     if (Object.keys(next).length > 0) return;
 
@@ -101,6 +115,7 @@ export function CompanyProfileForm() {
         vat_registered: form.vat_registered,
         vat_rate_bp: vatBp!,
         wht_rate_bp: whtBp!,
+        internal_day_rate_ugx: dayRate === null ? null : Number(dayRate),
       });
       toast.success('Company details saved');
     } catch {
@@ -117,6 +132,10 @@ export function CompanyProfileForm() {
       </div>
     );
   }
+
+  const dayRatePreview = form.internal_day_rate.trim()
+    ? parseUGX(form.internal_day_rate)
+    : null;
 
   const missing = [
     !form.tin && 'TIN',
@@ -279,6 +298,37 @@ export function CompanyProfileForm() {
           </Link>
           .
         </p>
+      </Section>
+
+      <Section
+        description="What a day of your time costs the business. Used only to estimate project profit — it never appears on anything a client sees."
+        title="Cost of your time"
+      >
+        <Field
+          error={errors.internal_day_rate}
+          hint="Leave blank if you'd rather not estimate. Projects then show costs without a profit figure, instead of guessing one."
+          label="Internal day rate (UGX)"
+        >
+          <Input
+            className="num"
+            disabled={!isAdmin}
+            inputMode="numeric"
+            onChange={(e) => set('internal_day_rate', e.target.value)}
+            placeholder="250,000"
+            value={form.internal_day_rate}
+          />
+        </Field>
+
+        {dayRatePreview !== null && dayRatePreview > 0n && (
+          <p className="text-xs text-ink-secondary">
+            {formatUGX(dayRatePreview)} a day ·{' '}
+            <span className="num">{formatUGX(dayRatePreview * 5n)}</span> a five-day week.{' '}
+            <Link className="text-primary hover:underline" to="/projects">
+              See it applied in Projects
+              <ExternalLink className="ml-0.5 inline h-3 w-3" />
+            </Link>
+          </p>
+        )}
       </Section>
 
       <div className="flex justify-end">

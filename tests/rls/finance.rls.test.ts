@@ -37,11 +37,14 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  if (createdDocIds.length > 0) {
-    await db.from('documents').delete().in('id', createdDocIds);
-  }
   if (testOrgId) {
-    await db.from('organisations').delete().eq('id', testOrgId);
+    // Sweep by organisation. Auto-generated receipts are not in createdDocIds,
+    // and one surviving document blocks the organisation delete on a foreign
+    // key — which is how the live database accumulated 21 stray client orgs.
+    await db.from('documents').delete().eq('organisation_id', testOrgId);
+
+    const { error } = await db.from('organisations').delete().eq('id', testOrgId);
+    if (error) throw new Error(`finance cleanup left an organisation behind: ${error.message}`);
   }
 });
 

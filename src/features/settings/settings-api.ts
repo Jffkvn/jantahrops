@@ -24,6 +24,7 @@ export type CompanyProfileInput = Partial<
     | 'vat_registered'
     | 'vat_rate_bp'
     | 'wht_rate_bp'
+    | 'internal_day_rate_ugx'
   >
 >;
 

@@ -53,7 +53,17 @@ afterAll(async () => {
     await db.from('contacts').delete().in('id', createdContactIds);
   }
   if (testOrgId) {
-    await db.from('organisations').delete().eq('id', testOrgId);
+    // Sweep by organisation as well as by tracked id. A vacancy created by a
+    // test that then failed is not in createdVacancyIds, and `on delete set
+    // null` means it quietly outlives its organisation — seven of them were
+    // still in the live database on 9 Aug, two of them `open` and `is_public`,
+    // which means the public-jobs endpoint was serving them to the real
+    // website's job board.
+    await db.from('vacancies').delete().eq('organisation_id', testOrgId);
+    await db.from('documents').delete().eq('organisation_id', testOrgId);
+
+    const { error } = await db.from('organisations').delete().eq('id', testOrgId);
+    if (error) throw new Error(`recruitment cleanup left an organisation behind: ${error.message}`);
   }
 });
 

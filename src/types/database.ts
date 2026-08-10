@@ -29,6 +29,14 @@ export type LeadStage =
   'new' | 'contacted' | 'qualified' | 'proposal_sent' | 'negotiation' | 'won' | 'lost' | 'dormant';
 export type SignalSeverity = 'info' | 'warn' | 'urgent';
 export type SignalStatus = 'open' | 'dismissed' | 'actioned' | 'expired';
+export type ProjectStage =
+  | 'planned'
+  | 'active'
+  | 'waiting_on_client'
+  | 'under_review'
+  | 'completed'
+  | 'archived';
+export type MilestoneStatus = 'pending' | 'in_progress' | 'done' | 'blocked';
 
 export type DocumentType = 'quote' | 'lpo' | 'invoice' | 'receipt';
 export type DocumentStatus =
@@ -173,6 +181,8 @@ export type CompanyProfileRow = {
   vat_rate_bp: number;
   wht_rate_bp: number;
   currency: string;
+  /** What a day of our time costs us, whole UGX. Null = unset; profit is then unavailable. */
+  internal_day_rate_ugx: number | null;
 };
 
 export type DocumentRow = {
@@ -252,6 +262,62 @@ export type ExpenseRow = {
   entered_by: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type ProjectRow = {
+  id: string;
+  organisation_id: string;
+  contact_id: string | null;
+  name: string;
+  project_type: string | null;
+  owner_id: string | null;
+  stage: ProjectStage;
+  start_date: string | null;
+  end_date: string | null;
+  contracted_value_ugx: number;
+  description: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ProjectMilestoneRow = {
+  id: string;
+  project_id: string;
+  title: string;
+  due_date: string | null;
+  status: MilestoneStatus;
+  position: number;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TimeEntryRow = {
+  id: string;
+  project_id: string;
+  user_id: string | null;
+  work_date: string;
+  /** Days, half-day granularity. Never hours — see the projects migration. */
+  days: number;
+  note: string | null;
+  created_at: string;
+};
+
+/**
+ * Per-project estimated P&L. `labour_cost_ugx` and `estimated_profit_ugx` are
+ * null when the internal day rate is unset — that is the honest answer and the
+ * UI must render it as "not available", never as zero.
+ */
+export type ProjectPnlViewRow = {
+  project_id: string;
+  contracted_value_ugx: number;
+  expenses_ugx: number;
+  days_logged: number;
+  invoiced_ugx: number;
+  received_ugx: number;
+  labour_cost_ugx: number | null;
+  estimated_profit_ugx: number | null;
 };
 
 export type FinanceFileRow = {
@@ -433,6 +499,9 @@ type DocumentLineInsert = Insertable<DocumentLineRow, 'document_id' | 'descripti
 type DocumentSequenceInsert = Insertable<DocumentSequenceRow, 'doc_type' | 'year'>;
 type PaymentInsert = Insertable<PaymentRow, 'document_id' | 'method'>;
 type ExpenseInsert = Insertable<ExpenseRow, 'category' | 'amount_ugx' | 'incurred_on'>;
+type ProjectInsert = Insertable<ProjectRow, 'organisation_id' | 'name'>;
+type ProjectMilestoneInsert = Insertable<ProjectMilestoneRow, 'project_id' | 'title'>;
+type TimeEntryInsert = Insertable<TimeEntryRow, 'project_id' | 'work_date' | 'days'>;
 type FinanceFileInsert = Insertable<FinanceFileRow, 'path' | 'filename' | 'mime' | 'size_bytes'>;
 type VacancyInsert = Insertable<VacancyRow, 'title' | 'slug'>;
 type CandidateInsert = Insertable<CandidateRow, 'contact_id'>;
@@ -527,6 +596,24 @@ export interface Database {
         Update: Partial<Omit<ExpenseRow, 'id' | 'created_at'>>;
         Relationships: [];
       };
+      projects: {
+        Row: ProjectRow;
+        Insert: ProjectInsert;
+        Update: Partial<Omit<ProjectRow, 'id' | 'created_at'>>;
+        Relationships: [];
+      };
+      project_milestones: {
+        Row: ProjectMilestoneRow;
+        Insert: ProjectMilestoneInsert;
+        Update: Partial<Omit<ProjectMilestoneRow, 'id' | 'created_at'>>;
+        Relationships: [];
+      };
+      time_entries: {
+        Row: TimeEntryRow;
+        Insert: TimeEntryInsert;
+        Update: Partial<Omit<TimeEntryRow, 'id' | 'created_at'>>;
+        Relationships: [];
+      };
       finance_files: {
         Row: FinanceFileRow;
         Insert: FinanceFileInsert;
@@ -568,6 +655,7 @@ export interface Database {
       v_invoice_balances: { Row: InvoiceBalanceViewRow; Relationships: [] };
       v_business_contacts: { Row: BusinessContactViewRow; Relationships: [] };
       v_candidate_search: { Row: CandidateSearchViewRow; Relationships: [] };
+      v_project_pnl: { Row: ProjectPnlViewRow; Relationships: [] };
     };
     Functions: {
       is_admin: { Args: Record<never, never>; Returns: boolean };
@@ -596,6 +684,8 @@ export interface Database {
       employment_type: EmploymentType;
       application_stage: ApplicationStage;
       availability_status: AvailabilityStatus;
+      project_stage: ProjectStage;
+      milestone_status: MilestoneStatus;
     };
     CompositeTypes: Record<never, never>;
   };
