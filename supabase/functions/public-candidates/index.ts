@@ -87,6 +87,7 @@ interface RegistrationPayload {
   cvPath?: string;
   vacancySlug?: string;
   screeningAnswers?: Record<string, unknown>;
+  notes?: string;
   honeypot?: string;
   submittedAt?: string;
 }
@@ -348,6 +349,7 @@ Deno.serve(async (req: Request) => {
             candidate_id: candidateId,
             source: 'website',
             screening_answers: payload.screeningAnswers ?? {},
+            notes: payload.notes ?? null,
           })
           .select('id')
           .single();
