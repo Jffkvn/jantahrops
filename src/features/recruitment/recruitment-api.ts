@@ -11,6 +11,7 @@ import type {
   VacancyStatus,
   EmploymentType,
   ApplicationStage,
+  ScreeningQuestionRow,
 } from '@/types/database';
 
 // --- vacancies --------------------------------------------------------------
@@ -100,6 +101,7 @@ export interface CreateVacancyInput {
   salaryMaxUgx?: number | null;
   closesAt?: string | null;
   ownerId?: string | null;
+  screeningQuestions?: ScreeningQuestionRow[];
 }
 
 function slugify(title: string): string {
@@ -134,6 +136,7 @@ export async function createVacancy(input: CreateVacancyInput): Promise<VacancyR
       salary_max_ugx: input.salaryMaxUgx ?? null,
       closes_at: input.closesAt ?? null,
       owner_id: input.ownerId ?? null,
+      screening_questions: input.screeningQuestions ?? [],
     })
     .select('*')
     .single();
@@ -148,17 +151,48 @@ export interface UpdateVacancyInput {
   requirements?: string | null;
   location?: string | null;
   employment_type?: EmploymentType | null;
+  employmentType?: EmploymentType | null;
   salary_min_ugx?: number | null;
+  salaryMinUgx?: number | null;
   salary_max_ugx?: number | null;
+  salaryMaxUgx?: number | null;
   closes_at?: string | null;
+  closesAt?: string | null;
   organisation_id?: string | null;
+  organisationId?: string | null;
   owner_id?: string | null;
+  ownerId?: string | null;
+  screening_questions?: ScreeningQuestionRow[];
+  screeningQuestions?: ScreeningQuestionRow[];
   status?: VacancyStatus;
 }
 
 export async function updateVacancy(id: string, patch: UpdateVacancyInput): Promise<void> {
   const supabase = getSupabase();
-  const { error } = await supabase.from('vacancies').update(patch).eq('id', id);
+  const dbPatch: Partial<Omit<VacancyRow, 'id' | 'created_at'>> = {};
+
+  if (patch.title !== undefined) dbPatch.title = patch.title;
+  if (patch.summary !== undefined) dbPatch.summary = patch.summary;
+  if (patch.description !== undefined) dbPatch.description = patch.description;
+  if (patch.requirements !== undefined) dbPatch.requirements = patch.requirements;
+  if (patch.location !== undefined) dbPatch.location = patch.location;
+  if (patch.employment_type !== undefined) dbPatch.employment_type = patch.employment_type;
+  else if (patch.employmentType !== undefined) dbPatch.employment_type = patch.employmentType;
+  if (patch.salary_min_ugx !== undefined) dbPatch.salary_min_ugx = patch.salary_min_ugx;
+  else if (patch.salaryMinUgx !== undefined) dbPatch.salary_min_ugx = patch.salaryMinUgx;
+  if (patch.salary_max_ugx !== undefined) dbPatch.salary_max_ugx = patch.salary_max_ugx;
+  else if (patch.salaryMaxUgx !== undefined) dbPatch.salary_max_ugx = patch.salaryMaxUgx;
+  if (patch.closes_at !== undefined) dbPatch.closes_at = patch.closes_at;
+  else if (patch.closesAt !== undefined) dbPatch.closes_at = patch.closesAt;
+  if (patch.organisation_id !== undefined) dbPatch.organisation_id = patch.organisation_id;
+  else if (patch.organisationId !== undefined) dbPatch.organisation_id = patch.organisationId;
+  if (patch.owner_id !== undefined) dbPatch.owner_id = patch.owner_id;
+  else if (patch.ownerId !== undefined) dbPatch.owner_id = patch.ownerId;
+  if (patch.screening_questions !== undefined) dbPatch.screening_questions = patch.screening_questions;
+  else if (patch.screeningQuestions !== undefined) dbPatch.screening_questions = patch.screeningQuestions;
+  if (patch.status !== undefined) dbPatch.status = patch.status;
+
+  const { error } = await supabase.from('vacancies').update(dbPatch).eq('id', id);
   if (error) throw error;
 }
 

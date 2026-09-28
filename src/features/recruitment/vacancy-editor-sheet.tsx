@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Plus, Trash2 } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -28,7 +28,7 @@ import { dateInputToISO, parseUGX, toDateInputValue } from '@/lib/format';
 import { listOrganisations } from '@/features/finance/finance-api';
 import { useCreateVacancy, useUpdateVacancy, usePublishVacancy, useCloseVacancy } from './use-recruitment';
 import { EMPLOYMENT_TYPE_LABELS, VACANCY_STATUS_LABELS } from './recruitment-meta';
-import type { EmploymentType, VacancyStatus } from '@/types/database';
+import type { EmploymentType, VacancyStatus, ScreeningQuestionRow, ScreeningQuestionType } from '@/types/database';
 
 const schema = z.object({
   title: z.string().min(1, 'A title is required.'),
@@ -64,6 +64,7 @@ export interface VacancyEditorProps {
     closesAt: string | null;
     isPublic: boolean;
     status: VacancyStatus;
+    screeningQuestions?: ScreeningQuestionRow[] | null;
   } | null;
 }
 
@@ -93,6 +94,12 @@ export function VacancyEditorSheet({
   const publish = usePublishVacancy(vacancy?.id ?? '');
   const close = useCloseVacancy(vacancy?.id ?? '');
   const [serverError, setServerError] = useState<string | null>(null);
+  const [questions, setQuestions] = useState<ScreeningQuestionRow[]>([]);
+  const [newQuestionText, setNewQuestionText] = useState('');
+  const [newQuestionType, setNewQuestionType] = useState<ScreeningQuestionType>('number');
+  const [newQuestionRequired, setNewQuestionRequired] = useState(true);
+  const [newQuestionOptions, setNewQuestionOptions] = useState('');
+  const [showAddQuestion, setShowAddQuestion] = useState(false);
 
   const {
     register,
@@ -109,10 +116,43 @@ export function VacancyEditorSheet({
   useEffect(() => {
     if (open) {
       reset(defaultValues(vacancy));
+      setQuestions(vacancy?.screeningQuestions ?? []);
       setServerError(null);
+      setShowAddQuestion(false);
+      setNewQuestionText('');
+      setNewQuestionOptions('');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, vacancy]);
+
+  const handleAddQuestion = () => {
+    const prompt = newQuestionText.trim();
+    if (!prompt) return;
+
+    const newQ: ScreeningQuestionRow = {
+      id: `sq_${Date.now()}`,
+      question: prompt,
+      type: newQuestionType,
+      required: newQuestionRequired,
+      ...(newQuestionType === 'select'
+        ? {
+            options: newQuestionOptions
+              .split(',')
+              .map((s) => s.trim())
+              .filter(Boolean),
+          }
+        : {}),
+    };
+
+    setQuestions((prev) => [...prev, newQ]);
+    setNewQuestionText('');
+    setNewQuestionOptions('');
+    setShowAddQuestion(false);
+  };
+
+  const handleRemoveQuestion = (id: string) => {
+    setQuestions((prev) => prev.filter((q) => q.id !== id));
+  };
 
   const onSubmit = async (values: FormValues) => {
     setServerError(null);
@@ -128,6 +168,7 @@ export function VacancyEditorSheet({
         salaryMinUgx: values.salaryMin && parseUGX(values.salaryMin) != null ? Number(parseUGX(values.salaryMin)) : null,
         salaryMaxUgx: values.salaryMax && parseUGX(values.salaryMax) != null ? Number(parseUGX(values.salaryMax)) : null,
         closesAt: values.closesDate ? dateInputToISO(values.closesDate) : null,
+        screeningQuestions: questions,
       };
       if (vacancy) {
         await updateVacancy.mutateAsync(payload);
@@ -239,6 +280,138 @@ export function VacancyEditorSheet({
               {...register('requirements')}
             />
           </Field>
+
+          {/* Screening Questions Builder */}
+          <div className="space-y-3 rounded-control border border-border p-3.5 bg-surface-sunken/40">
+            <div className="flex items-center justify-between">
+              <div>
+                <Label className="text-sm font-medium text-ink">Screening questions</Label>
+                <p className="text-xs text-ink-secondary">
+                  Custom role requirements candidates must answer when applying on the website.
+                </p>
+              </div>
+              {!showAddQuestion && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setShowAddQuestion(true)}
+                  className="inline-flex items-center gap-1.5 shrink-0"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Add question
+                </Button>
+              )}
+            </div>
+
+            {questions.length > 0 && (
+              <div className="space-y-2 pt-1">
+                {questions.map((q, idx) => (
+                  <div
+                    key={q.id}
+                    className="flex items-start justify-between gap-3 rounded-control border border-border bg-surface p-2.5 text-xs shadow-soft"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-semibold text-ink">Q{idx + 1}.</span>
+                        <span className="text-ink">{q.question}</span>
+                      </div>
+                      <div className="mt-1 flex items-center gap-2 text-[11px] text-ink-muted">
+                        <span className="rounded bg-surface-sunken px-1.5 py-0.5 uppercase tracking-wide font-medium">
+                          {q.type}
+                        </span>
+                        <span>{q.required ? 'Required' : 'Optional'}</span>
+                        {q.options && q.options.length > 0 && (
+                          <span>Options: {q.options.join(', ')}</span>
+                        )}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveQuestion(q.id)}
+                      className="text-ink-muted hover:text-danger p-1 rounded transition-colors"
+                      title="Remove question"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {showAddQuestion && (
+              <div className="mt-2 space-y-3 rounded-control border border-primary/20 bg-surface p-3">
+                <Label className="text-xs font-semibold text-ink">New screening question</Label>
+                <Input
+                  placeholder="e.g. How many years of commercial payroll experience do you have?"
+                  value={newQuestionText}
+                  onChange={(e) => setNewQuestionText(e.target.value)}
+                  className="text-xs"
+                />
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <Label className="text-[11px] text-ink-muted">Answer type</Label>
+                    <Select
+                      value={newQuestionType}
+                      onValueChange={(v) => setNewQuestionType(v as ScreeningQuestionType)}
+                    >
+                      <SelectTrigger className="mt-1 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="number">Numeric (e.g. Years)</SelectItem>
+                        <SelectItem value="text">Short text</SelectItem>
+                        <SelectItem value="boolean">Yes / No</SelectItem>
+                        <SelectItem value="select">Dropdown list</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex items-center justify-between pt-5 px-1">
+                    <span className="text-xs text-ink font-medium">Mandatory?</span>
+                    <Switch
+                      checked={newQuestionRequired}
+                      onCheckedChange={setNewQuestionRequired}
+                    />
+                  </div>
+                </div>
+
+                {newQuestionType === 'select' && (
+                  <div>
+                    <Label className="text-[11px] text-ink-muted">Options (comma-separated)</Label>
+                    <Input
+                      placeholder="e.g. QuickBooks, SAP, Tally, Sage"
+                      value={newQuestionOptions}
+                      onChange={(e) => setNewQuestionOptions(e.target.value)}
+                      className="mt-1 text-xs"
+                    />
+                  </div>
+                )}
+
+                <div className="flex justify-end gap-2 pt-1">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setShowAddQuestion(false);
+                      setNewQuestionText('');
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="primary"
+                    size="sm"
+                    disabled={!newQuestionText.trim()}
+                    onClick={handleAddQuestion}
+                  >
+                    Add to vacancy
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
 
           <div className="flex items-center justify-between rounded-control border border-border px-3 py-2.5">
             <div>
