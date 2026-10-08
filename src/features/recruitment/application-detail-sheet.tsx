@@ -242,7 +242,7 @@ function ApplicationDetailBody({
             {Object.entries(application.screening_answers).map(([key, val]) => {
               const matchedQ = (vacancy?.screening_questions ?? []).find((q) => q.id === key);
               const prompt = matchedQ ? matchedQ.question : key;
-              const answerText = typeof val === 'boolean' ? (val ? 'Yes' : 'No') : String(val ?? '—');
+              const answerText = formatAnswer(val);
 
               return (
                 <div key={key} className="rounded-control border border-border bg-surface-sunken/40 p-3 text-xs">
@@ -499,4 +499,18 @@ function Fact({ label, children }: { label: string; children: React.ReactNode })
       <div className="mt-0.5 text-ink">{children}</div>
     </div>
   );
+}
+
+/**
+ * Screening answers arrive as `unknown` (a JSON object keyed by question id), so
+ * a multi-select can be an array and a malformed submission anything at all.
+ * String() on those would print "[object Object]" in front of a hiring manager.
+ */
+function formatAnswer(val: unknown): string {
+  if (val === null || val === undefined || val === '') return '—';
+  if (typeof val === 'boolean') return val ? 'Yes' : 'No';
+  if (typeof val === 'string') return val;
+  if (typeof val === 'number') return String(val);
+  if (Array.isArray(val)) return val.map(formatAnswer).join(', ');
+  return JSON.stringify(val);
 }
