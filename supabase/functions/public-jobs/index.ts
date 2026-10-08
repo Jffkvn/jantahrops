@@ -14,9 +14,33 @@
 
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 
+const DEFAULT_TRUSTED_ORIGINS = [
+  'https://jantahr.com',
+  'https://www.jantahr.com',
+  'https://jantahr.netlify.app',
+  'http://localhost:5173',
+  'http://localhost:5174',
+  'http://localhost:5175',
+];
+
+const RAW_ALLOWED = Deno.env.get('PUBLIC_JOBS_ALLOWED_ORIGIN') ?? '*';
+
 function corsHeaders(origin: string | null): HeadersInit {
+  let allow = '*';
+  if (RAW_ALLOWED !== '*') {
+    const list = RAW_ALLOWED.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+    const trusted = new Set([...DEFAULT_TRUSTED_ORIGINS.map((s) => s.toLowerCase()), ...list]);
+    if (origin && trusted.has(origin.toLowerCase())) {
+      allow = origin;
+    } else {
+      allow = list[0] || 'https://jantahr.com';
+    }
+  } else if (origin) {
+    allow = origin;
+  }
+
   return {
-    'Access-Control-Allow-Origin': origin ?? '*',
+    'Access-Control-Allow-Origin': allow,
     'Access-Control-Allow-Methods': 'GET, OPTIONS',
     'Access-Control-Allow-Headers': 'content-type',
     'Access-Control-Max-Age': '86400',
