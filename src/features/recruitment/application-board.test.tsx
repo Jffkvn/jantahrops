@@ -31,6 +31,7 @@ function makeApp(
     owner_id: null,
     notes: null,
     rejected_reason: null,
+    screening_answers: {},
     created_at: '2026-08-01T09:00:00.000Z',
     updated_at: '2026-08-01T09:00:00.000Z',
     vacancy: { id: 'v1', title: 'Senior React Engineer', slug: 'senior-react-engineer', status: 'open' },

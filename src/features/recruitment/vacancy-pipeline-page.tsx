@@ -212,6 +212,7 @@ export function VacancyPipelinePage() {
           closesAt: vacancy.closes_at,
           isPublic: vacancy.is_public,
           status: vacancy.status,
+          screeningQuestions: vacancy.screening_questions,
         }}
       />
     </div>

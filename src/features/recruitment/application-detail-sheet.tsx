@@ -227,6 +227,34 @@ function ApplicationDetailBody({
         </div>
       )}
 
+      {/* Screening Responses */}
+      {application.screening_answers && Object.keys(application.screening_answers).length > 0 && (
+        <div className="border-b border-border p-6">
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-secondary">
+              Screening Question Responses
+            </h3>
+            <span className="rounded bg-surface-sunken px-2 py-0.5 text-[10px] font-semibold text-ink-secondary">
+              {Object.keys(application.screening_answers).length} answered
+            </span>
+          </div>
+          <div className="space-y-2.5">
+            {Object.entries(application.screening_answers).map(([key, val]) => {
+              const matchedQ = (vacancy?.screening_questions ?? []).find((q) => q.id === key);
+              const prompt = matchedQ ? matchedQ.question : key;
+              const answerText = typeof val === 'boolean' ? (val ? 'Yes' : 'No') : String(val ?? '—');
+
+              return (
+                <div key={key} className="rounded-control border border-border bg-surface-sunken/40 p-3 text-xs">
+                  <p className="font-medium text-ink-secondary">{prompt}</p>
+                  <p className="mt-1 text-sm font-semibold text-ink">{answerText}</p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Stage control */}
       <div className="border-b border-border p-6">
         <label className="mb-1.5 block text-xs font-semibold text-ink-secondary">Move stage</label>

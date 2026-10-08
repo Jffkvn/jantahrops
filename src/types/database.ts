@@ -482,6 +482,16 @@ export type ApplicationStage =
   | 'talent_pool';
 export type AvailabilityStatus = 'immediate' | 'one_month' | 'three_months' | 'not_looking';
 
+export type ScreeningQuestionType = 'text' | 'number' | 'select' | 'boolean';
+
+export interface ScreeningQuestionRow {
+  id: string;
+  question: string;
+  type: ScreeningQuestionType;
+  required: boolean;
+  options?: string[];
+}
+
 export type VacancyRow = {
   id: string;
   organisation_id: string | null; // the client hiring
@@ -496,6 +506,7 @@ export type VacancyRow = {
   salary_max_ugx: number | null; // whole UGX
   status: VacancyStatus;
   is_public: boolean;
+  screening_questions: ScreeningQuestionRow[];
   published_at: string | null;
   closes_at: string | null;
   owner_id: string | null;
@@ -538,6 +549,7 @@ export type ApplicationRow = {
   candidate_id: string;
   source: string | null;
   stage: ApplicationStage;
+  screening_answers: Record<string, unknown>;
   applied_at: string;
   owner_id: string | null;
   notes: string | null;

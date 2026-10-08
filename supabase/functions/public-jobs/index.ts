@@ -35,6 +35,14 @@ function json(body: unknown, status: number, origin: string | null): Response {
   });
 }
 
+interface ScreeningQuestion {
+  id: string;
+  question: string;
+  type: string;
+  required: boolean;
+  options?: string[];
+}
+
 interface VacancyRow {
   id: string;
   slug: string;
@@ -46,6 +54,7 @@ interface VacancyRow {
   employment_type: string | null;
   salary_min_ugx: number | null;
   salary_max_ugx: number | null;
+  screening_questions: ScreeningQuestion[] | null;
   published_at: string | null;
   closes_at: string | null;
 }
@@ -63,6 +72,7 @@ interface Job {
   requirements: string | null;
   salaryMin: number | null;
   salaryMax: number | null;
+  screeningQuestions?: ScreeningQuestion[];
   postedAt: string | null;
   closesAt: string | null;
 }
@@ -86,7 +96,7 @@ Deno.serve(async (req: Request) => {
   const { data, error } = await supabase
     .from('vacancies')
     .select(
-      'id, slug, title, summary, description, requirements, location, employment_type, salary_min_ugx, salary_max_ugx, published_at, closes_at',
+      'id, slug, title, summary, description, requirements, location, employment_type, salary_min_ugx, salary_max_ugx, screening_questions, published_at, closes_at',
     )
     .eq('is_public', true)
     .eq('status', 'open')
@@ -109,6 +119,7 @@ Deno.serve(async (req: Request) => {
     requirements: v.requirements,
     salaryMin: v.salary_min_ugx,
     salaryMax: v.salary_max_ugx,
+    screeningQuestions: v.screening_questions || [],
     postedAt: v.published_at,
     closesAt: v.closes_at,
   }));

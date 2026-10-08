@@ -86,6 +86,8 @@ interface RegistrationPayload {
   availability?: string;
   cvPath?: string;
   vacancySlug?: string;
+  screeningAnswers?: Record<string, unknown>;
+  notes?: string;
   honeypot?: string;
   submittedAt?: string;
 }
@@ -342,7 +344,13 @@ Deno.serve(async (req: Request) => {
       if (vacancy) {
         const { data: application, error: appError } = await supabase
           .from('applications')
-          .insert({ vacancy_id: vacancy.id, candidate_id: candidateId, source: 'website' })
+          .insert({
+            vacancy_id: vacancy.id,
+            candidate_id: candidateId,
+            source: 'website',
+            screening_answers: payload.screeningAnswers ?? {},
+            notes: payload.notes ?? null,
+          })
           .select('id')
           .single();
         // Duplicate application (same person, same vacancy) is fine — the unique
