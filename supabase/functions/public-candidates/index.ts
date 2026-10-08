@@ -31,24 +31,31 @@ const ALLOWED_MIME = new Set([
 ]);
 const MAX_CV_BYTES = 10 * 1024 * 1024; // 10 MB
 const BUCKET = 'candidates';
-const ALLOWED_ORIGINS = (Deno.env.get('PUBLIC_CANDIDATES_ALLOWED_ORIGIN') ?? '*')
-  .split(',')
-  .map((o) => o.trim())
-  .filter(Boolean);
+const DEFAULT_TRUSTED_ORIGINS = [
+  'https://jantahr.com',
+  'https://www.jantahr.com',
+  'https://jantahr.netlify.app',
+  'http://localhost:5173',
+  'http://localhost:5174',
+  'http://localhost:5175',
+];
 
-/**
- * `Access-Control-Allow-Origin` must be ONE origin or `*` — browsers reject a
- * comma-separated list outright. The secret is a list (www, apex and the
- * Netlify preview), so echo back the request's origin only if it is on that
- * list. An unlisted origin gets the first allowed one, which the browser will
- * (correctly) refuse to match.
- */
+const RAW_ALLOWED = Deno.env.get('PUBLIC_CANDIDATES_ALLOWED_ORIGIN') ?? '*';
+
 function corsHeaders(origin: string | null): HeadersInit {
-  const allow = ALLOWED_ORIGINS.includes('*')
-    ? (origin ?? '*')
-    : origin && ALLOWED_ORIGINS.includes(origin)
-      ? origin
-      : (ALLOWED_ORIGINS[0] ?? '*');
+  let allow = '*';
+  if (RAW_ALLOWED !== '*') {
+    const list = RAW_ALLOWED.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+    const trusted = new Set([...DEFAULT_TRUSTED_ORIGINS.map((s) => s.toLowerCase()), ...list]);
+    if (origin && trusted.has(origin.toLowerCase())) {
+      allow = origin;
+    } else {
+      allow = list[0] || 'https://jantahr.com';
+    }
+  } else if (origin) {
+    allow = origin;
+  }
+
   return {
     'Access-Control-Allow-Origin': allow,
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
