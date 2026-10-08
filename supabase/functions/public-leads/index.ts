@@ -23,6 +23,10 @@ const RATE_LIMIT_WINDOW_MIN = 1;
 // carries no credentials, and CORS never gates non-browser callers anyway.
 const ALLOWED_ORIGIN = Deno.env.get('PUBLIC_LEADS_ALLOWED_ORIGIN') ?? '*';
 
+declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void } | undefined;
+const LEAD_ALERT_WEBHOOK_URL = Deno.env.get('LEAD_ALERT_WEBHOOK_URL') ?? '';
+const LEAD_ALERT_SECRET = Deno.env.get('LEAD_ALERT_SECRET') ?? '';
+
 function corsHeaders(origin: string | null): HeadersInit {
   const allow = ALLOWED_ORIGIN === '*' ? (origin ?? '*') : ALLOWED_ORIGIN;
   return {
@@ -69,6 +73,46 @@ interface WebsitePayload {
   sourcePage?: string;
   metadata?: unknown;
   submittedAt?: string;
+}
+
+async function sendLeadAlert(payload: WebsitePayload, leadType: string): Promise<void> {
+  if (!LEAD_ALERT_WEBHOOK_URL || !LEAD_ALERT_SECRET) return;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
+
+  try {
+    const alertBody = {
+      source: 'jantahr-ops',
+      secret: LEAD_ALERT_SECRET,
+      lead: {
+        leadType,
+        fullName: payload.fullName ?? '',
+        email: payload.email ?? '',
+        phone: payload.phone ?? '',
+        organization: payload.organization ?? '',
+        trainingUnit: payload.trainingUnit ?? '',
+        message: payload.message ?? '',
+        sourcePage: payload.sourcePage ?? '',
+        submittedAt: payload.submittedAt ?? new Date().toISOString(),
+      },
+    };
+
+    const res = await fetch(LEAD_ALERT_WEBHOOK_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(alertBody),
+      signal: controller.signal,
+    });
+
+    if (!res.ok) {
+      console.error(`Lead alert webhook responded with status ${res.status}`);
+    }
+  } catch (err) {
+    console.error('Lead alert webhook failed:', err);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 Deno.serve(async (req: Request) => {
@@ -231,6 +275,14 @@ Deno.serve(async (req: Request) => {
       .from('web_submissions')
       .update({ contact_id: contactId, lead_id: lead.id })
       .eq('id', submissionId);
+
+    // Forward lead to Apps Script mailer (non-blocking for caller).
+    const alertPromise = sendLeadAlert(payload, leadType);
+    if (typeof EdgeRuntime !== 'undefined' && EdgeRuntime?.waitUntil) {
+      EdgeRuntime.waitUntil(alertPromise);
+    } else {
+      await alertPromise;
+    }
 
     return json({ ok: true }, 200, origin);
   } catch (_e) {

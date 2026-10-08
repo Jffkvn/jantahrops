@@ -34,24 +34,26 @@ VITE_AI_TRAINING_REGISTRATION_ENDPOINT=https://qjsgqskigjqrzjftunhg.supabase.co/
 
 Redeploy the website. That is the entire change.
 
-## Zero-risk cutover: dual-write first
+## Lead alert and mailer flow: website → Ops → Apps Script
 
-Do **not** switch the Google Apps Script off on day one. For the first few weeks:
+The website posts directly to Ops. Ops saves the lead and immediately forwards a copy to the Google Apps Script webhook, which sends the email alert:
 
-1. Keep the existing Apps Script writing to the Google Sheet **and** sending the
-   email notifications you rely on today.
-2. Point the website env var at the Ops endpoint (above). Now leads flow into
-   Ops as well.
-3. For a week, compare: every sheet row should have a matching lead in Ops. If
-   one is missing, check the Supabase Edge Function logs
-   (`supabase functions logs public-leads`).
-4. Once you trust Ops, retire the sheet write. Until Ops has its own email
-   reminders (Phase 1, later slice), you may want to keep the Apps Script email
-   notification running so you still get alerted on a new lead.
+```
+website form → Ops public-leads (saves lead) → Apps Script (emails hello@jantahr.com, optional Sheet row)
+```
 
-> If the website can only post to ONE endpoint, keep it on the Apps Script and
-> have the Apps Script forward a copy to the Ops endpoint — a two-line `fetch`
-> in the script's `doPost`. That gives dual-write without touching the site.
+1. **Ops configuration**:
+   Two Supabase secrets must be configured on the `public-leads` Edge Function:
+   - `LEAD_ALERT_WEBHOOK_URL`: The Apps Script web app URL (`.../exec`).
+   - `LEAD_ALERT_SECRET`: A shared random secret matching the Apps Script property.
+
+2. **Apps Script configuration**:
+   Two Script Properties must be set in the Google Apps Script project settings:
+   - `OPS_ALERT_SECRET`: Shared secret matching Ops.
+   - `ALERT_TO`: Destination email address (`hello@jantahr.com`).
+
+3. **Google Sheet persistence**:
+   Writing to the Google Sheet is now **optional**. The Apps Script appends a row as a secondary backup, but JantaHR Ops is the primary system of record for all lead pipelines and follow-ups. If the mailer or Sheet write fails, the lead is already securely recorded in Ops.
 
 ## Verifying it works
 
