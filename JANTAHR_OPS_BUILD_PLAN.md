@@ -796,8 +796,9 @@ Needed before the relevant phase, not before starting:
 4. ~~Brand palette and typeface~~ — **resolved.** See §10.
 5. ~~Host and domain~~ — **resolved.** Local first, GitHub next, Vercel or
    Netlify when there is something to deploy. Blocks nothing.
-6. **WhatsApp reminders** — Meta Cloud API, or the free pre-filled-link
-   approach? _(Blocks Phase 1)_
+6. ~~WhatsApp reminders~~ — **shelved (8 Oct 2026).** Email and the in-app
+   bell come first. Options and setup are documented in
+   [docs/WHATSAPP_REMINDERS.md](docs/WHATSAPP_REMINDERS.md). No longer blocks Phase 1.
 7. **Course catalogue and prices.** _(Blocks Phase 5)_
 8. **Google Form and Sheet retirement date** — how long we dual-write.
    _(Blocks Phase 1 cutover)_
