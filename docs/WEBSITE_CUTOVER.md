@@ -1,85 +1,150 @@
-# Website → Ops cutover: the public lead endpoint
+# Website → Ops Cutover & Lead Alerting Architecture
 
-The JantaHR website's AI-training registration form already POSTs a structured
-payload to a configurable endpoint. Ops now **is** a valid endpoint for it. This
-is the switch, and how to do it with zero risk.
+This document describes the complete flow, architecture, and configuration for handling website lead registrations (e.g. AI Training registrations) and forwarding team email alerts.
 
-## The endpoint
+---
 
-```
-POST https://qjsgqskigjqrzjftunhg.supabase.co/functions/v1/public-leads
-```
+## 1. Architectural Overview
 
-- Accepts the website's existing payload verbatim (no website code change).
-- Returns `{"ok": true}` or `{"ok": false, "error": "..."}` — the exact shape
-  `src/services/aiTrainingRegistration.ts` already parses.
-- **No auth header required.** The function is deployed `--no-verify-jwt`, so the
-  website's plain `fetch` (Content-Type only, no Authorization) works as-is —
-  verified. The endpoint is the guard, not a JWT.
+Previously, the website form on `https://www.jantahr.com/ai-training` attempted to submit directly to Google Apps Script (`script.google.com`). Because strict Content Security Policies (CSP) blocked calls to Google scripts from the browser, submissions failed.
 
-## What it does on each submission
-
-Honeypot check → find-or-create organisation → find-or-create contact (match on
-email, then phone) → attach the `lead` role → create a lead in stage `new` →
-write the applicant's message as the first timeline note. Idempotent on
-`leadType + email/phone + submittedAt`, rate-limited per IP, 10 KB body cap.
-
-## The switch (website side)
-
-In the website's environment (`.env` / Netlify env), set:
+The new architecture decouples the browser from Google Apps Script by introducing JantaHR Ops as the backend hub:
 
 ```
-VITE_AI_TRAINING_REGISTRATION_ENDPOINT=https://qjsgqskigjqrzjftunhg.supabase.co/functions/v1/public-leads
+┌─────────────────────────────────┐
+│ Browser Form                    │
+│ https://www.jantahr.com/ai-training
+└───────────────┬─────────────────┘
+                │ 1. POST JSON (no auth required)
+                ▼
+┌─────────────────────────────────────────────────────────┐
+│ JantaHR Ops Edge Function                               │
+│ POST .../functions/v1/public-leads                     │
+│  - Honeypot check & 10 KB body cap                      │
+│  - Contacts & Organisations find-or-create              │
+│  - Creates lead in stage 'new'                          │
+│  - Stores raw payload in web_submissions (audit trail)  │
+└───────────────┬─────────────────────────────────────────┘
+                │ 2. EdgeRuntime.waitUntil (async, non-blocking)
+                ▼
+┌─────────────────────────────────────────────────────────┐
+│ Google Apps Script Webhook                              │
+│ POST .../macros/s/.../exec                              │
+│  - Validates shared secret (OPS_ALERT_SECRET)           │
+│  - Formats plain text email (prevents HTML injection)   │
+│  - Sends email via GmailApp.sendEmail                   │
+│  - Destination: hello@jantahr.com (ALERT_TO)            │
+│  - Reply-To set to candidate's email address            │
+│  - Appends secondary backup row to Google Sheet         │
+└─────────────────────────────────────────────────────────┘
 ```
 
-Redeploy the website. That is the entire change.
+---
 
-## Lead alert and mailer flow: website → Ops → Apps Script
+## 2. Component Configuration
 
-The website posts directly to Ops. Ops saves the lead and immediately forwards a copy to the Google Apps Script webhook, which sends the email alert:
+### A. JantaHR Website (`Review jantahr website`)
 
-```
-website form → Ops public-leads (saves lead) → Apps Script (emails hello@jantahr.com, optional Sheet row)
-```
+1. **Client Code**:
+   - [`src/lib/constants.ts`](file:///Users/jeffadhaya/Documents/Zcode/Review%20jantahr%20website/src/lib/constants.ts):
+     `DEFAULT_AI_TRAINING_REGISTRATION_ENDPOINT` defaults to `https://qjsgqskigjqrzjftunhg.supabase.co/functions/v1/public-leads`.
+     Includes a safety guard: if an environment variable accidentally points to `script.google.com`, it automatically falls back to Ops.
+   - [`src/pages/AiTraining.tsx`](file:///Users/jeffadhaya/Documents/Zcode/Review%20jantahr%20website/src/pages/AiTraining.tsx):
+     Always sends clean `application/json` payload with zero custom headers.
+2. **Netlify Environment Variable**:
+   - `VITE_AI_TRAINING_REGISTRATION_ENDPOINT` = `https://qjsgqskigjqrzjftunhg.supabase.co/functions/v1/public-leads`
+   - Set in Netlify Site Configuration → Environment Variables (All deploys).
+   - Deployed without cache.
+3. **Commit**: `959198c` (`fix(ai-training): send registrations to JantaHR Ops instead of Apps Script`).
 
-1. **Ops configuration**:
-   Two Supabase secrets must be configured on the `public-leads` Edge Function:
-   - `LEAD_ALERT_WEBHOOK_URL`: The Apps Script web app URL (`.../exec`).
-   - `LEAD_ALERT_SECRET`: A shared random secret matching the Apps Script property.
+---
 
-2. **Apps Script configuration**:
-   Two Script Properties must be set in the Google Apps Script project settings:
-   - `OPS_ALERT_SECRET`: Shared secret matching Ops.
+### B. JantaHR Ops Backend (`JantaHR OPs`)
+
+1. **Edge Function**:
+   - [`supabase/functions/public-leads/index.ts`](file:///Users/jeffadhaya/Documents/Anti%20gravity%20Projects/JantaHR%20OPs/supabase/functions/public-leads/index.ts)
+   - Function Name: `public-leads`
+   - Deployed with `--no-verify-jwt` so browsers can submit without authentication tokens.
+2. **Supabase Secrets** (`project-ref: qjsgqskigjqrzjftunhg`):
+   - `LEAD_ALERT_WEBHOOK_URL`: Google Apps Script Web App URL (`https://script.google.com/macros/s/AKfycbzQsiRS_moV0oiB7wJ0xr8ac-Etbl_ZPuAvSL6ZcbRBT1bWafidad2nNqZrpkvDREHH/exec`).
+   - `LEAD_ALERT_SECRET`: Shared secret matching `OPS_ALERT_SECRET` in Apps Script.
+3. **Async Dispatching**:
+   - Dispatched immediately before returning `{ ok: true }` using `EdgeRuntime.waitUntil(sendLeadAlert(payload, leadType))`.
+   - Timeout: 8 seconds (`AbortController`).
+   - Error handling: Non-throwing (never breaks user submission if external mailer is slow or down).
+4. **Commits**:
+   - `764ebdb`: Pre-requisite docs & prompt addition.
+   - `687c97f`: `feat(public-leads): email the team via Apps Script when a website lead arrives`.
+
+---
+
+### C. Google Apps Script Mailer ("AI Training Leads")
+
+1. **Project & Deployment**:
+   - Deployment ID: `AKfycbzQsiRS_moV0oiB7wJ0xr8ac-Etbl_ZPuAvSL6ZcbRBT1bWafidad2nNqZrpkvDREHH`
+   - Active Version: Version 12
+   - Execute as: `Me`
+   - Who has access: `Anyone`
+2. **Script Properties** (Project Settings → Script Properties):
+   - `OPS_ALERT_SECRET`: Shared random secret matching `LEAD_ALERT_SECRET` in Supabase.
    - `ALERT_TO`: Destination email address (`hello@jantahr.com`).
+3. **Script Implementation** (`Code.gs`):
+   - **Routing**: `doPost` inspects incoming body:
+     ```javascript
+     function doPost(e) {
+       var data = null;
+       try { data = JSON.parse(e.postData.contents); } catch (err) {}
+       if (data && data.source === 'jantahr-ops') return handleOpsAlert_(data);
+       // ... existing legacy form submission flow ...
+     }
+     ```
+   - **`handleOpsAlert_(data)`**:
+     - Secret validation against `OPS_ALERT_SECRET`.
+     - Uses **`GmailApp.sendEmail`** instead of `MailApp.sendEmail` (uses existing authorized Gmail OAuth scopes; avoids authorization errors).
+     - Sends plain-text email with `Reply-To` set to the candidate's email (`options.replyTo = l.email`).
+     - Appends backup row to Google Sheet tab `"AI Training Leads"`.
+     - Returns `ContentService.createTextOutput(JSON.stringify({ ok: true })).setMimeType(ContentService.MimeType.JSON)`.
 
-3. **Google Sheet persistence**:
-   Writing to the Google Sheet is now **optional**. The Apps Script appends a row as a secondary backup, but JantaHR Ops is the primary system of record for all lead pipelines and follow-ups. If the mailer or Sheet write fails, the lead is already securely recorded in Ops.
+---
 
-## Verifying it works
+## 3. Deployment & Maintenance Runbook
 
-```bash
-curl -s -X POST \
-  "https://qjsgqskigjqrzjftunhg.supabase.co/functions/v1/public-leads" \
-  -H "Content-Type: application/json" \
-  -d '{"leadType":"ai_training","fullName":"Test Person","email":"test@example.com","phone":"0772000000","trainingUnit":"AI for HR teams","honeypot":"","submittedAt":"2026-08-01T10:00:00Z"}'
-# → {"ok":true}
-```
-
-Then open Ops → Leads: the lead appears in the "New" column, and on the Today
-view if you set a follow-up. Delete the test lead afterward.
-
-## Locking down CORS (optional, later)
-
-The function currently reflects any origin (fine — it is write-only and carries
-no credentials). To restrict it to the production site, set a function secret:
-
-```
-supabase secrets set PUBLIC_LEADS_ALLOWED_ORIGIN=https://<your-site-domain>
-```
-
-## Redeploying the function
+### How to redeploy the Ops Edge Function:
 
 ```bash
-SUPABASE_ACCESS_TOKEN=<token> \
-  supabase functions deploy public-leads --project-ref qjsgqskigjqrzjftunhg --no-verify-jwt
+supabase functions deploy public-leads --project-ref qjsgqskigjqrzjftunhg --no-verify-jwt
 ```
+
+### How to update secrets on Ops:
+
+```bash
+supabase secrets set --project-ref qjsgqskigjqrzjftunhg \
+  LEAD_ALERT_WEBHOOK_URL="https://script.google.com/macros/s/AKfycbzQsiRS_moV0oiB7wJ0xr8ac-Etbl_ZPuAvSL6ZcbRBT1bWafidad2nNqZrpkvDREHH/exec" \
+  LEAD_ALERT_SECRET="<secret-value>"
+```
+
+### How to test the mailer directly from CLI:
+
+```bash
+curl -i -X POST \
+  -H "Content-Type: text/plain;charset=utf-8" \
+  -d '{"source":"jantahr-ops","secret":"<secret-value>","lead":{"leadType":"ai_training","fullName":"Test Lead","email":"candidate@example.com","phone":"0772000000","organization":"Test Org","trainingUnit":"AI Awareness","message":"Test message","sourcePage":"/ai-training","submittedAt":"2026-10-08T15:00:00Z"}}' \
+  "https://script.google.com/macros/s/AKfycbzQsiRS_moV0oiB7wJ0xr8ac-Etbl_ZPuAvSL6ZcbRBT1bWafidad2nNqZrpkvDREHH/exec"
+```
+*Expected response: HTTP 302 redirect with `{"ok":true}` at the echo location.*
+
+---
+
+## 4. Troubleshooting Log & Key Learnings
+
+1. **CSP (Content Security Policy) Violations**:
+   - The browser cannot send requests to `script.google.com` due to website CSP rules.
+   - **Solution**: The website must only communicate with `qjsgqskigjqrzjftunhg.supabase.co`. All Google services are contacted server-side by the Edge Function.
+2. **Supabase CLI Authorization**:
+   - When deploying Edge Functions or setting secrets, the CLI must be authenticated as the account owning `qjsgqskigjqrzjftunhg` (`theagency256@gmail.com`). Use `npx supabase login` to switch accounts.
+3. **Google Apps Script `MailApp` vs `GmailApp`**:
+   - Calling `MailApp.sendEmail` without interactive scope authorization produces: `Exception: Specified permissions are not sufficient to call MailApp.sendEmail`.
+   - `GmailApp.sendEmail(targetEmail, subject, body, options)` is already authorized under the project's Gmail scopes and delivers reliably.
+4. **Google Apps Script Deployment URL Preservation**:
+   - Always choose **Manage deployments → Edit (pencil icon) → Version: New version** to update the existing deployment.
+   - Do **not** click "New deployment", as that generates a different deployment ID and URL.
