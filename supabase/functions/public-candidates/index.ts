@@ -18,6 +18,8 @@
 // Deploy: supabase functions deploy public-candidates --no-verify-jwt
 
 import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { buildCandidateAlert, type ScreeningQuestion } from '../_shared/candidate-alert.ts';
+import { runAfterResponse, sendNotification } from '../_shared/mailer.ts';
 
 // --- config ----------------------------------------------------------------
 const MAX_BODY_BYTES = 10_240; // 10 KB — the CV is uploaded separately
@@ -31,6 +33,8 @@ const ALLOWED_MIME = new Set([
 ]);
 const MAX_CV_BYTES = 10 * 1024 * 1024; // 10 MB
 const BUCKET = 'candidates';
+// The website's general talent-pool form sends this slug; it is not a vacancy.
+const TALENT_POOL_SLUG = 'general-talent-pool';
 const DEFAULT_TRUSTED_ORIGINS = [
   'https://jantahr.com',
   'https://www.jantahr.com',
@@ -352,15 +356,19 @@ Deno.serve(async (req: Request) => {
     }
 
     // Application: only if the vacancy slug matches an open, public vacancy.
+    const vacancySlug = (payload.vacancySlug ?? '').trim();
+    const isTalentPool = !vacancySlug || vacancySlug === TALENT_POOL_SLUG;
     let applicationId: string | null = null;
-    if (payload.vacancySlug) {
-      const { data: vacancy } = await supabase
+    let vacancy: { id: string; title: string; screening_questions: unknown } | null = null;
+    if (!isTalentPool) {
+      const { data } = await supabase
         .from('vacancies')
-        .select('id')
-        .eq('slug', payload.vacancySlug)
+        .select('id, title, screening_questions')
+        .eq('slug', vacancySlug)
         .eq('is_public', true)
         .eq('status', 'open')
         .maybeSingle();
+      vacancy = data;
 
       if (vacancy) {
         const { data: application, error: appError } = await supabase
@@ -380,10 +388,14 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // Timeline entry on the candidate.
-    const activityBody = applicationId
-      ? `Registered on the website${payload.vacancySlug ? ` for ${payload.vacancySlug}` : ''}. Application created.`
+    // Timeline entry on the candidate. Notes only live on an application, so
+    // without one (talent-pool form, closed vacancy) they go on the timeline —
+    // otherwise the cover note, discipline, country and LinkedIn are lost.
+    const notes = (payload.notes ?? '').trim();
+    let activityBody = applicationId
+      ? `Registered on the website for ${vacancy?.title ?? vacancySlug}. Application created.`
       : 'Registered on the website. Added to the talent pool.';
+    if (!applicationId && notes) activityBody += `\n\n${notes}`;
     await supabase.from('activities').insert({
       subject_type: 'candidate',
       subject_id: candidateId,
@@ -394,6 +406,34 @@ Deno.serve(async (req: Request) => {
 
     // Link the submission to what it produced (audit trail).
     await supabase.from('web_submissions').update({ contact_id: contactId }).eq('id', submissionId);
+
+    // Email the team. Skip a repeat application to the same vacancy (the
+    // unique constraint made it a no-op, so there is nothing new to review).
+    const repeatApplication = Boolean(vacancy) && !applicationId;
+    if (!repeatApplication) {
+      const questions = Array.isArray(vacancy?.screening_questions)
+        ? (vacancy.screening_questions as ScreeningQuestion[])
+        : [];
+      const alert = buildCandidateAlert({
+        fullName,
+        email,
+        phone,
+        headline: profileFields.headline,
+        yearsExperience: profileFields.years_experience,
+        salaryExpectationUgx: profileFields.salary_expectation_ugx,
+        availability: profileFields.availability,
+        skills: skillsArray,
+        hasCv: Boolean(payload.cvPath),
+        outcome: applicationId ? 'application' : isTalentPool ? 'talent_pool' : 'vacancy_unavailable',
+        vacancyTitle: vacancy?.title ?? null,
+        vacancySlug: isTalentPool ? null : vacancySlug,
+        screeningQuestions: questions,
+        screeningAnswers: payload.screeningAnswers ?? null,
+        notes,
+        submittedAt,
+      });
+      await runAfterResponse(sendNotification({ ...alert, replyTo: email }, 'candidate alert'));
+    }
 
     return json({ ok: true }, 200, origin);
   } catch (_e) {

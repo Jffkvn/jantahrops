@@ -68,8 +68,9 @@ The new architecture decouples the browser from Google Apps Script by introducin
 2. **Supabase Secrets** (`project-ref: qjsgqskigjqrzjftunhg`):
    - `LEAD_ALERT_WEBHOOK_URL`: Google Apps Script Web App URL (`https://script.google.com/macros/s/AKfycbzQsiRS_moV0oiB7wJ0xr8ac-Etbl_ZPuAvSL6ZcbRBT1bWafidad2nNqZrpkvDREHH/exec`).
    - `LEAD_ALERT_SECRET`: Shared secret matching `OPS_ALERT_SECRET` in Apps Script.
-3. **Async Dispatching**:
-   - Dispatched immediately before returning `{ ok: true }` using `EdgeRuntime.waitUntil(sendLeadAlert(payload, leadType))`.
+3. **Async Dispatching** (shared helper `supabase/functions/_shared/mailer.ts`, used by `public-leads` and `public-candidates`):
+   - Dispatched immediately before returning `{ ok: true }` via `runAfterResponse(sendLeadAlert(...))`, which uses `EdgeRuntime.waitUntil`.
+   - The mailer's reply body is checked: Apps Script answers HTTP 200 even when it rejects the secret or throws, so anything other than `{"ok":true}` is logged as `[mailer] ... rejected` in the function logs.
    - Timeout: 8 seconds (`AbortController`).
    - Error handling: Non-throwing (never breaks user submission if external mailer is slow or down).
 4. **Commits**:
@@ -93,7 +94,9 @@ The new architecture decouples the browser from Google Apps Script by introducin
      ```javascript
      function doPost(e) {
        var data = null;
-       try { data = JSON.parse(e.postData.contents); } catch (err) {}
+       try {
+         data = JSON.parse(e.postData.contents);
+       } catch (err) {}
        if (data && data.source === 'jantahr-ops') return handleOpsAlert_(data);
        // ... existing legacy form submission flow ...
      }
@@ -131,7 +134,8 @@ curl -i -X POST \
   -d '{"source":"jantahr-ops","secret":"<secret-value>","lead":{"leadType":"ai_training","fullName":"Test Lead","email":"candidate@example.com","phone":"0772000000","organization":"Test Org","trainingUnit":"AI Awareness","message":"Test message","sourcePage":"/ai-training","submittedAt":"2026-10-08T15:00:00Z"}}' \
   "https://script.google.com/macros/s/AKfycbzQsiRS_moV0oiB7wJ0xr8ac-Etbl_ZPuAvSL6ZcbRBT1bWafidad2nNqZrpkvDREHH/exec"
 ```
-*Expected response: HTTP 302 redirect with `{"ok":true}` at the echo location.*
+
+_Expected response: HTTP 302 redirect with `{"ok":true}` at the echo location._
 
 ---
 
@@ -148,3 +152,105 @@ curl -i -X POST \
 4. **Google Apps Script Deployment URL Preservation**:
    - Always choose **Manage deployments → Edit (pencil icon) → Version: New version** to update the existing deployment.
    - Do **not** click "New deployment", as that generates a different deployment ID and URL.
+
+---
+
+## 5. Candidate alerts (`public-candidates`)
+
+When someone applies for a job or joins the talent pool on the website, Ops
+saves the candidate first, then emails the team through the same Apps Script.
+
+- **What the email contains:** name, email, phone, headline, experience, salary
+  expectation, availability, skills, whether a CV was uploaded, the vacancy's
+  screening questions paired with the answers, and the cover letter / notes.
+  Reply-To is the candidate's email. Formatting lives in
+  `supabase/functions/_shared/candidate-alert.ts` (tested with
+  `deno test supabase/functions/_shared/`).
+- **Three cases:** an application to an open public vacancy; a talent-pool
+  registration (slug `general-talent-pool` or none); an application to a slug
+  that is not an open public vacancy (added to the talent pool, flagged in the
+  subject). A repeat application to the same vacancy sends nothing.
+- **Talent-pool notes:** notes are stored on an application, so when there is no
+  application they are written to the candidate's timeline instead of being
+  dropped.
+- **No Sheet row** is written for candidates.
+
+### Message format (generic "notify")
+
+Candidate alerts use a generic message the Apps Script sends verbatim. Future
+alerts (reminders, overdue invoices) will reuse it with no further script
+changes:
+
+```json
+{
+  "source": "jantahr-ops",
+  "secret": "…",
+  "kind": "notify",
+  "subject": "New application: Jane Namuli — Payroll Officer",
+  "text": "plain-text body",
+  "replyTo": "jane@example.com"
+}
+```
+
+### Switch-on checklist
+
+The Supabase secret `OPS_NOTIFY_ENABLED` gates notify messages. Until it is
+`true`, Ops logs `[mailer] candidate alert: skipped` and sends nothing, so an
+older script version can never receive a message it doesn't understand.
+
+1. **Apps Script** (`Code.gs`): route notify messages before the lead handler,
+   add the handler, then **Manage deployments → Edit → New version** (keep the URL):
+
+   ```javascript
+   // in doPost, replace the jantahr-ops line with:
+   if (data && data.source === 'jantahr-ops') {
+     return data.kind === 'notify' ? handleOpsNotify_(data) : handleOpsAlert_(data);
+   }
+
+   function handleOpsNotify_(data) {
+     var props = PropertiesService.getScriptProperties();
+     var out = function (obj) {
+       return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(
+         ContentService.MimeType.JSON,
+       );
+     };
+     if (!data.secret || data.secret !== props.getProperty('OPS_ALERT_SECRET')) {
+       return out({ ok: false });
+     }
+     var to = props.getProperty('ALERT_TO') || 'hello@jantahr.com';
+     var subject = String(data.subject || 'JantaHR Ops notification')
+       .replace(/[\r\n]+/g, ' ')
+       .slice(0, 200);
+     var options = { name: 'JantaHR Ops' };
+     if (data.replyTo) options.replyTo = String(data.replyTo);
+     GmailApp.sendEmail(to, subject, String(data.text || ''), options);
+     return out({ ok: true });
+   }
+   ```
+
+2. **Deploy both functions** (CLI logged in as the project owner):
+
+   ```bash
+   supabase functions deploy public-leads --project-ref qjsgqskigjqrzjftunhg --no-verify-jwt
+   supabase functions deploy public-candidates --project-ref qjsgqskigjqrzjftunhg --no-verify-jwt
+   ```
+
+3. **Turn notify on:**
+
+   ```bash
+   supabase secrets set --project-ref qjsgqskigjqrzjftunhg OPS_NOTIFY_ENABLED=true
+   ```
+
+4. **Test** with a talent-pool registration (no CV needed). Use the team's test
+   address `adhayajeff@gmail.com`:
+
+   ```bash
+   curl -s -X POST "https://qjsgqskigjqrzjftunhg.supabase.co/functions/v1/public-candidates" \
+     -H "Content-Type: application/json" -H "Origin: https://www.jantahr.com" \
+     -d '{"fullName":"TEST - please ignore","email":"adhayajeff@gmail.com","phone":"0772000000","headline":"Test candidate","vacancySlug":"general-talent-pool","notes":"Automated test of candidate alerts","honeypot":"","submittedAt":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'"}'
+   # → {"ok":true}, then an email "New talent pool registration: TEST - please ignore"
+   ```
+
+   Then check Ops → Talent Pool for the test candidate (its timeline shows the
+   notes) and archive or remove it. If no email arrives, read the function logs
+   for a `[mailer]` line.
