@@ -31,10 +31,24 @@ const ALLOWED_MIME = new Set([
 ]);
 const MAX_CV_BYTES = 10 * 1024 * 1024; // 10 MB
 const BUCKET = 'candidates';
-const ALLOWED_ORIGIN = Deno.env.get('PUBLIC_CANDIDATES_ALLOWED_ORIGIN') ?? '*';
+const ALLOWED_ORIGINS = (Deno.env.get('PUBLIC_CANDIDATES_ALLOWED_ORIGIN') ?? '*')
+  .split(',')
+  .map((o) => o.trim())
+  .filter(Boolean);
 
+/**
+ * `Access-Control-Allow-Origin` must be ONE origin or `*` — browsers reject a
+ * comma-separated list outright. The secret is a list (www, apex and the
+ * Netlify preview), so echo back the request's origin only if it is on that
+ * list. An unlisted origin gets the first allowed one, which the browser will
+ * (correctly) refuse to match.
+ */
 function corsHeaders(origin: string | null): HeadersInit {
-  const allow = ALLOWED_ORIGIN === '*' ? (origin ?? '*') : ALLOWED_ORIGIN;
+  const allow = ALLOWED_ORIGINS.includes('*')
+    ? (origin ?? '*')
+    : origin && ALLOWED_ORIGINS.includes(origin)
+      ? origin
+      : (ALLOWED_ORIGINS[0] ?? '*');
   return {
     'Access-Control-Allow-Origin': allow,
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
