@@ -7,11 +7,14 @@
 // See docs/WEBSITE_CUTOVER.md.
 //
 // Two message kinds:
-//   - lead alert (public-leads): { source, secret, lead: {...} }; the script
-//     formats the email and appends a backup row to the Sheet.
+//   - lead alert (public-leads): { source, secret, lead: {...}, subject, text,
+//     html }; the script appends a backup row to the Sheet and sends the email.
+//     Older script versions ignore subject/text/html and format their own.
 //   - notify (everything else): { source, secret, kind: 'notify', subject, text,
-//     replyTo? }; the script sends the text as-is. Gated by OPS_NOTIFY_ENABLED
+//     html?, replyTo? }; the script sends it as-is. Gated by OPS_NOTIFY_ENABLED
 //     so it can't reach a script version that doesn't understand it.
+// Team alerts go through the script (free, Gmail quota). Confirmations to the
+// public go through Resend instead (see resend.ts).
 //
 // Sending never throws and never blocks the caller's response.
 
@@ -54,14 +57,17 @@ async function postToMailer(message: Record<string, unknown>, label: string): Pr
   }
 }
 
-/** Website lead alert, formatted by the Apps Script (existing contract). */
-export function sendLeadAlert(lead: Record<string, string>): Promise<void> {
-  return postToMailer({ lead }, 'lead alert');
+/** Website lead alert: raw fields for the Sheet row, plus the branded email. */
+export function sendLeadAlert(
+  lead: Record<string, string>,
+  email: { subject: string; text: string; html: string },
+): Promise<void> {
+  return postToMailer({ lead, subject: email.subject, text: email.text, html: email.html }, 'lead alert');
 }
 
 /** A ready-made plain-text email to the team inbox. */
 export function sendNotification(
-  email: { subject: string; text: string; replyTo?: string | null },
+  email: { subject: string; text: string; html?: string; replyTo?: string | null },
   label: string,
 ): Promise<void> {
   if (!NOTIFY_ENABLED) {
@@ -73,6 +79,7 @@ export function sendNotification(
       kind: 'notify',
       subject: email.subject,
       text: email.text,
+      ...(email.html ? { html: email.html } : {}),
       ...(email.replyTo ? { replyTo: email.replyTo } : {}),
     },
     label,

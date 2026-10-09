@@ -19,7 +19,9 @@
 
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { buildCandidateAlert, type ScreeningQuestion } from '../_shared/candidate-alert.ts';
+import { applicationConfirmation, isDeliverableEmail, talentPoolConfirmation } from '../_shared/confirmations.ts';
 import { runAfterResponse, sendNotification } from '../_shared/mailer.ts';
+import { sendConfirmation } from '../_shared/resend.ts';
 
 // --- config ----------------------------------------------------------------
 const MAX_BODY_BYTES = 10_240; // 10 KB — the CV is uploaded separately
@@ -407,8 +409,12 @@ Deno.serve(async (req: Request) => {
     // Link the submission to what it produced (audit trail).
     await supabase.from('web_submissions').update({ contact_id: contactId }).eq('id', submissionId);
 
-    // Email the team. Skip a repeat application to the same vacancy (the
-    // unique constraint made it a no-op, so there is nothing new to review).
+    // After the response is sent: alert the team (Apps Script mailer) and
+    // confirm receipt to the candidate (Resend). Neither can fail the submission.
+    const background: Promise<unknown>[] = [];
+
+    // Team alert. Skip a repeat application to the same vacancy (the unique
+    // constraint made it a no-op, so there is nothing new to review).
     const repeatApplication = Boolean(vacancy) && !applicationId;
     if (!repeatApplication) {
       const questions = Array.isArray(vacancy?.screening_questions)
@@ -432,8 +438,26 @@ Deno.serve(async (req: Request) => {
         notes,
         submittedAt,
       });
-      await runAfterResponse(sendNotification({ ...alert, replyTo: email }, 'candidate alert'));
+      background.push(sendNotification({ ...alert, replyTo: email }, 'candidate alert'));
     }
+
+    // Confirmation to the candidate, including a repeat applicant (they may
+    // have sent an updated CV and should still hear back).
+    if (isDeliverableEmail(email)) {
+      const hasCv = Boolean(payload.cvPath);
+      const confirmation = vacancy
+        ? applicationConfirmation({ fullName, vacancyTitle: vacancy.title, hasCv })
+        : talentPoolConfirmation({ fullName, hasCv });
+      background.push(
+        sendConfirmation(
+          email,
+          confirmation,
+          vacancy ? 'application_confirmation' : 'talent_pool_confirmation',
+          `candidate-confirm-${submissionId}`,
+        ),
+      );
+    }
+    await runAfterResponse(Promise.all(background));
 
     return json({ ok: true }, 200, origin);
   } catch (_e) {

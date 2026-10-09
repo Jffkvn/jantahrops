@@ -13,7 +13,10 @@
 // (--no-verify-jwt because the website is anonymous; the function is the guard.)
 
 import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { enquiryConfirmation, isDeliverableEmail, trainingConfirmation } from '../_shared/confirmations.ts';
+import { buildLeadAlert } from '../_shared/lead-alert.ts';
 import { runAfterResponse, sendLeadAlert } from '../_shared/mailer.ts';
+import { sendConfirmation } from '../_shared/resend.ts';
 
 // --- config ----------------------------------------------------------------
 const MAX_BODY_BYTES = 10_240; // 10 KB
@@ -65,6 +68,8 @@ interface WebsitePayload {
   phone?: string;
   organization?: string;
   trainingUnit?: string;
+  /** Contact form: what the enquiry is about. */
+  interest?: string;
   message?: string;
   honeypot?: string;
   sourcePage?: string;
@@ -109,6 +114,7 @@ Deno.serve(async (req: Request) => {
   const email = (payload.email ?? '').trim().toLowerCase() || null;
   const phone = payload.phone ? normalizeUgandanPhone(payload.phone) : null;
   const leadType = (payload.leadType ?? 'website').trim() || 'website';
+  const interest = (payload.trainingUnit ?? payload.interest ?? '').trim();
 
   if (!fullName) return json({ ok: false, error: 'A name is required.' }, 400, origin);
   if (!email && !phone) {
@@ -207,7 +213,7 @@ Deno.serve(async (req: Request) => {
       .insert({
         contact_id: contactId,
         organisation_id: organisationId,
-        service_interest: (payload.trainingUnit ?? '').trim() || null,
+        service_interest: interest || null,
         source: `Website (${leadType}) ${(payload.sourcePage ?? '').trim()}`.trim(),
         stage: 'new',
       })
@@ -233,19 +239,32 @@ Deno.serve(async (req: Request) => {
       .update({ contact_id: contactId, lead_id: lead.id })
       .eq('id', submissionId);
 
-    // Email the team via the Apps Script mailer, after the response is sent.
+    // After the response is sent: alert the team (Apps Script mailer) and
+    // confirm receipt to the person (Resend). Neither can fail the submission.
+    const leadFields = {
+      leadType,
+      fullName: payload.fullName ?? '',
+      email: payload.email ?? '',
+      phone: payload.phone ?? '',
+      organization: payload.organization ?? '',
+      trainingUnit: interest,
+      message: payload.message ?? '',
+      sourcePage: payload.sourcePage ?? '',
+      submittedAt,
+    };
+    const teamEmail = buildLeadAlert({ ...leadFields, interest });
+    const confirmation =
+      leadType === 'ai_training'
+        ? trainingConfirmation({ fullName, trainingUnit: interest })
+        : enquiryConfirmation({ fullName, interest });
+    const category = `${leadType.replace(/[^A-Za-z0-9_-]/g, '_')}_confirmation`;
     await runAfterResponse(
-      sendLeadAlert({
-        leadType,
-        fullName: payload.fullName ?? '',
-        email: payload.email ?? '',
-        phone: payload.phone ?? '',
-        organization: payload.organization ?? '',
-        trainingUnit: payload.trainingUnit ?? '',
-        message: payload.message ?? '',
-        sourcePage: payload.sourcePage ?? '',
-        submittedAt,
-      }),
+      Promise.all([
+        sendLeadAlert(leadFields, teamEmail),
+        isDeliverableEmail(email)
+          ? sendConfirmation(email, confirmation, category, `lead-confirm-${submissionId}`)
+          : Promise.resolve(),
+      ]),
     );
 
     return json({ ok: true }, 200, origin);

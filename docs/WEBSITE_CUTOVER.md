@@ -102,7 +102,9 @@ The system now decouples the browser from Google Apps Script by using JantaHR Op
      ```javascript
      function doPost(e) {
        var data = null;
-       try { data = JSON.parse(e.postData.contents); } catch (err) {}
+       try {
+         data = JSON.parse(e.postData.contents);
+       } catch (err) {}
        if (data && data.source === 'jantahr-ops') {
          return data.kind === 'notify' ? handleOpsNotify_(data) : handleOpsAlert_(data);
        }
@@ -136,21 +138,23 @@ When someone applies for a job or joins the talent pool on the website, Ops save
 ## 4. Production Verification History
 
 ### Verification 1: AI Training Leads (`public-leads`)
-* **Test Date**: 8 October 2026
-* **Form URL**: `https://www.jantahr.com/ai-training`
-* **Result**:
+
+- **Test Date**: 8 October 2026
+- **Form URL**: `https://www.jantahr.com/ai-training`
+- **Result**:
   - Website displayed success confirmation with 0 CSP errors.
   - Lead recorded in Ops `leads` (`stage: 'new'`, interest: `AI Awareness and Workplace Readiness`).
   - Web submission recorded in `web_submissions`.
   - Email delivered to `hello@jantahr.com` from `JantaHR Website`.
 
 ### Verification 2: Candidate Alerts (`public-candidates`)
-* **Test Date**: 9 October 2026
-* **Test Address**: `adhayajeff@gmail.com` (Candidate: *Freelance Product*)
-* **Result**:
+
+- **Test Date**: 9 October 2026
+- **Test Address**: `adhayajeff@gmail.com` (Candidate: _Freelance Product_)
+- **Result**:
   - Candidate profile updated with headline `Test candidate`.
   - Timeline activity created in Ops with note:  
-    *"Registered on the website. Added to the talent pool.\n\nAutomated test of candidate alerts"*
+    _"Registered on the website. Added to the talent pool.\n\nAutomated test of candidate alerts"_
   - Candidate visible in Ops interface under **Delivery > Talent Pool**.
   - Email delivered to `hello@jantahr.com` with subject:  
     `New talent pool registration: TEST - please ignore`
@@ -207,3 +211,86 @@ npm run check
 4. **Google Apps Script Deployment URL Preservation**:
    - Always choose **Manage deployments → Edit (pencil icon) → Version: New version** to update the existing deployment.
    - Do **not** click "New deployment", as that generates a different deployment ID and URL.
+
+---
+
+## 7. Branded emails: confirmations to the public and branded team alerts
+
+Every jantahr.com form now produces two emails, both built in Ops from the same
+branded layout (`supabase/functions/_shared/email-layout.ts`):
+
+| Form            | Confirmation to the person (Resend)                               | Team alert to hello@jantahr.com (Apps Script) |
+| --------------- | ----------------------------------------------------------------- | --------------------------------------------- |
+| Job application | "We've received your application for {role}" + data notice        | Details, screening answers, cover letter      |
+| Talent pool     | "Thank you for joining the JantaHR talent pool" + data notice     | Same                                          |
+| AI training     | "We've received your JantaHR AI training registration"            | Details and message                           |
+| Contact page    | "Thank you for contacting JantaHR", reply within one business day | Details and message                           |
+
+- **Confirmations** go through **Resend** from `JantaHR <no-reply@jantahr.com>`
+  with Reply-To `hello@jantahr.com` (`_shared/resend.ts`, `_shared/confirmations.ts`).
+  Secret: `RESEND_API_KEY` (sending-only key, jantahr.com). Free plan: 100/day,
+  3,000/month. Each send carries an idempotency key, so a retry never sends twice.
+  Without the key, Ops logs `[resend] … skipped` and sends nothing.
+- **Anti-spam rule:** confirmations only contain the person's first name (clamped
+  to 30 characters) and values Ops controls (vacancy title, training unit or
+  contact topic). Messages and cover letters are never echoed back, so the forms
+  can't be used to send arbitrary text to someone else's inbox.
+- **Data protection text** (candidate emails) matches the Privacy page: Uganda
+  Data Protection and Privacy Act 2019, 24-month retention, rights to access,
+  correct, delete and withdraw consent via hello@jantahr.com, link to /privacy.
+  Change `BRAND.cvRetentionMonths` in `_shared/brand.ts` if the policy changes.
+- **DNS** (cPanel Zone Editor, verified 9 Oct 2026): TXT `resend._domainkey`,
+  CNAME `rsend` and CNAME `send`, from the Resend dashboard. The root SPF and
+  MX records are untouched and still serve hello@jantahr.com.
+- **no-reply@jantahr.com** is a real cPanel mailbox with a forwarder to
+  hello@jantahr.com, so stray replies are not lost.
+- **Contact page** (website `src/pages/Contact.tsx`) posts JSON to `public-leads`
+  with `leadType: 'contact'` and `interest`. Formspree is no longer used. The
+  endpoint is `VITE_CONTACT_ENDPOINT` (defaults to `public-leads`), a new name so
+  an old Formspree variable left in Netlify cannot override it.
+
+### Apps Script update for branded team alerts
+
+Ops now sends `html` alongside `subject` and `text` in both message kinds. Older
+script versions ignore it and keep sending plain text, so this update is safe to
+do at any time. In `Code.gs`:
+
+```javascript
+// 1. In handleOpsNotify_, replace the GmailApp.sendEmail line with:
+if (data.html) options.htmlBody = String(data.html);
+GmailApp.sendEmail(to, subject, String(data.text || ''), options);
+
+// 2. In handleOpsAlert_, just before its own GmailApp.sendEmail call, add a
+//    branch that uses Ops' branded version when present:
+if (data.html && data.subject) {
+  var opts = { name: 'JantaHR Ops', htmlBody: String(data.html) };
+  if (l.email) opts.replyTo = l.email;
+  GmailApp.sendEmail(
+    targetEmail,
+    String(data.subject)
+      .replace(/[\r\n]+/g, ' ')
+      .slice(0, 200),
+    String(data.text || ''),
+    opts,
+  );
+} else {
+  // ...the existing GmailApp.sendEmail(...) call stays here unchanged...
+}
+
+// 3. Still in handleOpsAlert_, write the Sheet row only for training leads, so
+//    contact enquiries don't land in the "AI Training Leads" sheet:
+if (l.leadType === 'ai_training') {
+  // ...the existing appendRow(...) code...
+}
+```
+
+Then **Manage deployments → Edit → New version** (keep the URL).
+
+### Deploy order
+
+1. Deploy `public-leads` and `public-candidates` (confirmations start immediately).
+2. Update the Apps Script (any time; until then team alerts arrive as plain text).
+3. Push the website so Netlify builds the new contact form. This must come after
+   step 1, otherwise the contact topic (`interest`) is dropped.
+4. Test each form once with `adhayajeff@gmail.com` and check both inboxes.
+5. Once the contact form is confirmed working, the Formspree form can be deleted.

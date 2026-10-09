@@ -22,7 +22,7 @@ Deno.test('formatAnswer renders every answer shape as readable text', () => {
 });
 
 Deno.test('application alert pairs answers with questions in order, extras last', () => {
-  const { subject, text } = buildCandidateAlert({
+  const { subject, text, html } = buildCandidateAlert({
     ...base,
     outcome: 'application',
     vacancyTitle: 'Payroll Officer',
@@ -37,16 +37,17 @@ Deno.test('application alert pairs answers with questions in order, extras last'
   assertEquals(subject, 'New application: Jane Namuli — Payroll Officer');
   assertStringIncludes(text, 'Salary expectation: UGX 2,500,000');
   assert(text.indexOf('Years of payroll experience?') < text.indexOf('Can you start immediately?'));
-  assertStringIncludes(text, '- Can you start immediately?\n  Yes');
+  assertStringIncludes(text, 'Can you start immediately?: Yes');
   assert(text.indexOf('Can you start immediately?') < text.indexOf('sq_9'));
   assertStringIncludes(text, 'Cover letter and notes:\nI love payroll.');
   assert(!text.includes('[object Object]'));
+  assertStringIncludes(html, 'Payroll Officer');
 });
 
 Deno.test('talent pool alert has its own subject and no screening section', () => {
   const { subject, text } = buildCandidateAlert({ ...base, outcome: 'talent_pool', hasCv: false });
   assertEquals(subject, 'New talent pool registration: Jane Namuli');
-  assertStringIncludes(text, 'CV: not provided');
+  assertStringIncludes(text, 'CV: Not provided');
   assert(!text.includes('Screening answers'));
 });
 

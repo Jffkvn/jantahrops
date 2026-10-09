@@ -1,6 +1,8 @@
 // JantaHR Ops — the email the team gets when a candidate registers or applies
 // on the website. Pure formatting (no Deno, no I/O) so it can be unit tested.
 
+import { type Block, formatEat, type RenderedEmail, renderEmail } from './email-layout.ts';
+
 export interface ScreeningQuestion {
   id: string;
   question: string;
@@ -53,7 +55,7 @@ function formatUgx(n: number): string {
   return `UGX ${Math.round(n).toLocaleString('en-US')}`;
 }
 
-export function buildCandidateAlert(input: CandidateAlertInput): { subject: string; text: string } {
+export function buildCandidateAlert(input: CandidateAlertInput): RenderedEmail {
   const name = oneLine(input.fullName) || 'Unnamed candidate';
   const role = oneLine(input.vacancyTitle ?? '') || oneLine(input.vacancySlug ?? '');
 
@@ -68,8 +70,8 @@ export function buildCandidateAlert(input: CandidateAlertInput): { subject: stri
       break;
     case 'vacancy_unavailable':
       subject = `New candidate: ${name} (vacancy ${role || 'unknown'} is not open)`;
-      heading = `Candidate applied for "${role || 'unknown'}", which is not an open public vacancy. Added to the talent pool instead.`;
-      nextStep = 'Open JantaHR Ops → Talent Pool to review.';
+      heading = 'New candidate for a vacancy that is not open';
+      nextStep = `They applied for "${role || 'unknown'}", which is not an open public vacancy, so they were added to the talent pool. Open JantaHR Ops → Talent Pool to review.`;
       break;
     default:
       subject = `New talent pool registration: ${name}`;
@@ -77,32 +79,39 @@ export function buildCandidateAlert(input: CandidateAlertInput): { subject: stri
       nextStep = 'Open JantaHR Ops → Talent Pool to review.';
   }
 
-  const lines: string[] = [heading, '', `Name: ${name}`];
-  lines.push(`Email: ${input.email || '(none)'}`);
-  lines.push(`Phone: ${input.phone || '(none)'}`);
-  if (input.headline) lines.push(`Headline: ${oneLine(input.headline)}`);
-  if (Number.isFinite(input.yearsExperience)) lines.push(`Years of experience: ${input.yearsExperience}`);
-  if (Number.isFinite(input.salaryExpectationUgx)) {
-    lines.push(`Salary expectation: ${formatUgx(input.salaryExpectationUgx as number)}`);
+  const rows: { label: string; value: string }[] = [
+    { label: 'Name', value: name },
+    { label: 'Email', value: input.email || '(none)' },
+    { label: 'Phone', value: input.phone || '(none)' },
+  ];
+  if (input.headline) rows.push({ label: 'Headline', value: oneLine(input.headline) });
+  if (Number.isFinite(input.yearsExperience)) {
+    rows.push({ label: 'Years of experience', value: String(input.yearsExperience) });
   }
-  if (input.availability) lines.push(`Availability: ${oneLine(input.availability)}`);
-  if (input.skills && input.skills.length) lines.push(`Skills: ${input.skills.join(', ')}`);
-  lines.push(`CV: ${input.hasCv ? 'uploaded, open it in Ops' : 'not provided'}`);
-  lines.push(`Submitted: ${input.submittedAt}`);
+  if (Number.isFinite(input.salaryExpectationUgx)) {
+    rows.push({ label: 'Salary expectation', value: formatUgx(input.salaryExpectationUgx as number) });
+  }
+  if (input.availability) rows.push({ label: 'Availability', value: oneLine(input.availability) });
+  if (input.skills && input.skills.length) rows.push({ label: 'Skills', value: input.skills.join(', ') });
+  rows.push({ label: 'CV', value: input.hasCv ? 'Uploaded, open it in Ops' : 'Not provided' });
+  rows.push({ label: 'Submitted', value: formatEat(input.submittedAt) });
+
+  const blocks: Block[] = [{ kind: 'details', rows }];
 
   // Screening answers, in the vacancy's question order, then any extras.
   const answers = input.screeningAnswers ?? {};
   const answerKeys = Object.keys(answers);
   if (answerKeys.length) {
-    lines.push('', 'Screening answers:');
+    const answerRows: { label: string; value: string }[] = [];
     const asked = new Set<string>();
     for (const q of input.screeningQuestions ?? []) {
       asked.add(q.id);
-      lines.push(`- ${oneLine(q.question)}`, `  ${formatAnswer(answers[q.id])}`);
+      answerRows.push({ label: oneLine(q.question), value: formatAnswer(answers[q.id]) });
     }
     for (const key of answerKeys) {
-      if (!asked.has(key)) lines.push(`- ${key}`, `  ${formatAnswer(answers[key])}`);
+      if (!asked.has(key)) answerRows.push({ label: key, value: formatAnswer(answers[key]) });
     }
+    blocks.push({ kind: 'heading', text: 'Screening answers' }, { kind: 'details', rows: answerRows });
   }
 
   const notes = (input.notes ?? '').trim();
@@ -111,11 +120,10 @@ export function buildCandidateAlert(input: CandidateAlertInput): { subject: stri
       notes.length > MAX_NOTES_CHARS
         ? `${notes.slice(0, MAX_NOTES_CHARS)}\n… (shortened, full text in Ops)`
         : notes;
-    lines.push('', 'Cover letter and notes:', clipped);
+    blocks.push({ kind: 'quote', title: 'Cover letter and notes', text: clipped });
   }
 
-  lines.push('', nextStep);
-  if (input.email) lines.push('Reply to this email to answer the candidate directly.');
+  blocks.push({ kind: 'paragraph', text: nextStep });
 
-  return { subject: subject.slice(0, 200), text: lines.join('\n') };
+  return renderEmail(subject, { audience: 'team', preheader: `${name} · ${role || 'talent pool'}`, heading, blocks });
 }
