@@ -1,4 +1,6 @@
-// Pure rule for country-gate.ts, kept separate so it can be unit tested.
+// Pure rule for edge-functions/country-gate.ts. Lives outside edge-functions/
+// because Netlify bundles every file there as a function.
+// Pure rule, kept separate so it can be unit tested.
 
 export function parseAllowed(list: string): Set<string> {
   return new Set(

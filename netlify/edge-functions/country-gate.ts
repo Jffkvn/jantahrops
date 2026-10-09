@@ -13,7 +13,7 @@
 // member travels, then redeploy.
 
 import type { Config, Context } from 'https://edge.netlify.com';
-import { decide } from './country-gate-rules.ts';
+import { decide } from '../lib/country-gate-rules.ts';
 
 declare const Netlify: { env: { get(name: string): string | undefined } };
 

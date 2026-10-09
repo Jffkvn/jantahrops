@@ -1,4 +1,4 @@
-// Run: deno test netlify/edge-functions/
+// Run: deno test netlify/lib/
 import { assertEquals } from 'jsr:@std/assert@1';
 import { decide } from './country-gate-rules.ts';
 
