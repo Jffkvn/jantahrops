@@ -46,7 +46,8 @@ interface AppQ {
 }
 interface CandQ {
   id: string;
-  created_at: string;
+  /** A re-registration updates the row, so this is when they last signed up. */
+  updated_at: string;
   headline: string | null;
   contact: { full_name: string } | null;
 }
@@ -74,9 +75,9 @@ export async function getNewArrivals(): Promise<Arrival[]> {
       .limit(LIMIT),
     supabase
       .from('candidates')
-      .select('id, created_at, headline, contact:contacts!candidates_contact_id_fkey ( full_name )')
+      .select('id, updated_at, headline, contact:contacts!candidates_contact_id_fkey ( full_name )')
       .is('reviewed_at', null)
-      .order('created_at', { ascending: false })
+      .order('updated_at', { ascending: false })
       .limit(LIMIT),
   ]);
   if (leads.error) throw leads.error;
@@ -111,7 +112,9 @@ export async function getNewArrivals(): Promise<Arrival[]> {
         id: c.id,
         name: c.contact?.full_name ?? 'Unknown candidate',
         detail: ['Talent pool', c.headline].filter(Boolean).join(' · '),
-        createdAt: c.created_at,
+        // Someone already in the pool who signs up again keeps their original
+        // created_at; show when they arrived in the queue instead.
+        createdAt: c.updated_at,
       })),
   ];
   return out.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
