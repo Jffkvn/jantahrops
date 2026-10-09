@@ -49,3 +49,20 @@ allowed by its hash. If you edit that snippet, recompute the hash and update it:
 ```bash
 npm run build && python3 -c "import re,hashlib,base64;h=open('dist/index.html').read();[print('sha256-'+base64.b64encode(hashlib.sha256(s.encode()).digest()).decode()) for s in re.findall(r'<script>(.*?)</script>',h,re.S)]"
 ```
+
+## Uganda only
+
+`netlify/edge-functions/country-gate.ts` runs before every request on every
+domain of the site. Visitors whose connection geolocates outside the allowed
+countries (or can't be located) get a bare `404 Not found`, so nothing shows
+that Ops exists. Verified 9 Oct 2026: Uganda gets the app; Singapore, Slovenia
+and Turkey get 404.
+
+- Allowed countries: Netlify environment variable `OPS_ALLOWED_COUNTRIES`,
+  comma-separated ISO codes, default `UG`. To let someone work from Kenya, set
+  `UG,KE` and trigger a redeploy (Deploys → Trigger deploy).
+- This is an extra layer, not the lock. Data is protected by Supabase logins,
+  disabled sign-up and row-level security. A VPN exiting in Uganda gets through.
+- The rule lives in `netlify/lib/` with its test (`deno test netlify/lib/`).
+  Nothing else may go in `netlify/edge-functions/`: Netlify bundles every file
+  there as a function.
