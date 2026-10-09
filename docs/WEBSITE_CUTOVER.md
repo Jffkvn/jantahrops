@@ -1,42 +1,50 @@
-# Website → Ops Cutover & Lead Alerting Architecture
+# Website → Ops Cutover & Alerting Architecture (Leads & Candidates)
 
-This document describes the complete flow, architecture, and configuration for handling website lead registrations (e.g. AI Training registrations) and forwarding team email alerts.
+This document describes the complete flow, architecture, configuration, and verification for handling website submissions (AI Training registrations, job applications, and talent pool signups) and forwarding team email alerts.
 
 ---
 
 ## 1. Architectural Overview
 
-Previously, the website form on `https://www.jantahr.com/ai-training` attempted to submit directly to Google Apps Script (`script.google.com`). Because strict Content Security Policies (CSP) blocked calls to Google scripts from the browser, submissions failed.
+Previously, forms on the website attempted to submit directly to Google Apps Script (`script.google.com`). Because strict Content Security Policies (CSP) blocked calls to Google scripts from the browser, submissions failed.
 
-The new architecture decouples the browser from Google Apps Script by introducing JantaHR Ops as the backend hub:
+The system now decouples the browser from Google Apps Script by using JantaHR Ops as the backend hub:
 
 ```
-┌─────────────────────────────────┐
-│ Browser Form                    │
-│ https://www.jantahr.com/ai-training
-└───────────────┬─────────────────┘
-                │ 1. POST JSON (no auth required)
-                ▼
-┌─────────────────────────────────────────────────────────┐
-│ JantaHR Ops Edge Function                               │
-│ POST .../functions/v1/public-leads                     │
-│  - Honeypot check & 10 KB body cap                      │
-│  - Contacts & Organisations find-or-create              │
-│  - Creates lead in stage 'new'                          │
-│  - Stores raw payload in web_submissions (audit trail)  │
-└───────────────┬─────────────────────────────────────────┘
-                │ 2. EdgeRuntime.waitUntil (async, non-blocking)
-                ▼
-┌─────────────────────────────────────────────────────────┐
-│ Google Apps Script Webhook                              │
-│ POST .../macros/s/.../exec                              │
-│  - Validates shared secret (OPS_ALERT_SECRET)           │
-│  - Formats plain text email (prevents HTML injection)   │
-│  - Sends email via GmailApp.sendEmail                   │
-│  - Destination: hello@jantahr.com (ALERT_TO)            │
-│  - Reply-To set to candidate's email address            │
-│  - Appends secondary backup row to Google Sheet         │
-└─────────────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────┐
+│ Browser Form (jantahr.com)                    │
+│ • /ai-training (AI Training Form)             │
+│ • /jobs (Job Applications & Talent Pool)      │
+└───────────────────────┬───────────────────────┘
+                        │ 1. POST JSON (no auth required)
+                        ▼
+┌───────────────────────────────────────────────────────────────┐
+│ JantaHR Ops Edge Functions                                    │
+│ • POST .../functions/v1/public-leads                          │
+│ • POST .../functions/v1/public-candidates                     │
+│                                                               │
+│ Core Processing:                                              │
+│  - Honeypot check & 10 KB body cap                            │
+│  - Contacts / Organisations / Candidates find-or-create       │
+│  - Links vacancy applications or talent pool records          │
+│  - Writes notes to application or candidate timeline          │
+│  - Stores raw payload in web_submissions (audit trail)        │
+└───────────────────────┬───────────────────────────────────────┘
+                        │ 2. runAfterResponse (async via EdgeRuntime.waitUntil)
+                        ▼
+┌───────────────────────────────────────────────────────────────┐
+│ Google Apps Script Webhook                                    │
+│ POST .../macros/s/AKfycbzQsiRS.../exec                        │
+│                                                               │
+│ Routing & Dispatch:                                           │
+│  - Validates shared secret (OPS_ALERT_SECRET)                 │
+│  - If kind === 'notify' -> handleOpsNotify_ (Candidates)      │
+│  - Else -> handleOpsAlert_ (AI Training Leads)                │
+│  - Plain-text email via GmailApp.sendEmail                    │
+│  - Destination: hello@jantahr.com (ALERT_TO)                  │
+│  - Reply-To set to candidate/lead's email                     │
+│  - Appends secondary backup row to Google Sheet (leads only)  │
+└───────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -50,32 +58,32 @@ The new architecture decouples the browser from Google Apps Script by introducin
      `DEFAULT_AI_TRAINING_REGISTRATION_ENDPOINT` defaults to `https://qjsgqskigjqrzjftunhg.supabase.co/functions/v1/public-leads`.
      Includes a safety guard: if an environment variable accidentally points to `script.google.com`, it automatically falls back to Ops.
    - [`src/pages/AiTraining.tsx`](file:///Users/jeffadhaya/Documents/Zcode/Review%20jantahr%20website/src/pages/AiTraining.tsx):
-     Always sends clean `application/json` payload with zero custom headers.
+     Sends clean `application/json` payload with zero custom headers.
+   - [`src/pages/Jobs.tsx`](file:///Users/jeffadhaya/Documents/Zcode/Review%20jantahr%20website/src/pages/Jobs.tsx):
+     Submits candidate applications and talent pool signups to `public-candidates`.
 2. **Netlify Environment Variable**:
    - `VITE_AI_TRAINING_REGISTRATION_ENDPOINT` = `https://qjsgqskigjqrzjftunhg.supabase.co/functions/v1/public-leads`
    - Set in Netlify Site Configuration → Environment Variables (All deploys).
-   - Deployed without cache.
 3. **Commit**: `959198c` (`fix(ai-training): send registrations to JantaHR Ops instead of Apps Script`).
 
 ---
 
 ### B. JantaHR Ops Backend (`JantaHR OPs`)
 
-1. **Edge Function**:
-   - [`supabase/functions/public-leads/index.ts`](file:///Users/jeffadhaya/Documents/Anti%20gravity%20Projects/JantaHR%20OPs/supabase/functions/public-leads/index.ts)
-   - Function Name: `public-leads`
-   - Deployed with `--no-verify-jwt` so browsers can submit without authentication tokens.
-2. **Supabase Secrets** (`project-ref: qjsgqskigjqrzjftunhg`):
+1. **Edge Functions**:
+   - [`supabase/functions/public-leads/index.ts`](file:///Users/jeffadhaya/Documents/Anti%20gravity%20Projects/JantaHR%20OPs/supabase/functions/public-leads/index.ts): Handles sales/training leads.
+   - [`supabase/functions/public-candidates/index.ts`](file:///Users/jeffadhaya/Documents/Anti%20gravity%20Projects/JantaHR%20OPs/supabase/functions/public-candidates/index.ts): Handles job applications & talent pool.
+   - Both deployed `--no-verify-jwt` so browsers can submit without authentication tokens.
+2. **Shared Modules** (`supabase/functions/_shared/`):
+   - [`mailer.ts`](file:///Users/jeffadhaya/Documents/Anti%20gravity%20Projects/JantaHR%20OPs/supabase/functions/_shared/mailer.ts): Centralized mailer helper providing `sendLeadAlert`, `sendNotification`, and `runAfterResponse`. Inspects Apps Script response body (verifies `{"ok":true}`).
+   - [`candidate-alert.ts`](file:///Users/jeffadhaya/Documents/Anti%20gravity%20Projects/JantaHR%20OPs/supabase/functions/_shared/candidate-alert.ts): Formats candidate alerts with screening question/answer pairs, skills, availability, and cover letters. Tested via Deno (`deno test supabase/functions/_shared/`).
+3. **Supabase Secrets** (`project-ref: qjsgqskigjqrzjftunhg`):
    - `LEAD_ALERT_WEBHOOK_URL`: Google Apps Script Web App URL (`https://script.google.com/macros/s/AKfycbzQsiRS_moV0oiB7wJ0xr8ac-Etbl_ZPuAvSL6ZcbRBT1bWafidad2nNqZrpkvDREHH/exec`).
    - `LEAD_ALERT_SECRET`: Shared secret matching `OPS_ALERT_SECRET` in Apps Script.
-3. **Async Dispatching** (shared helper `supabase/functions/_shared/mailer.ts`, used by `public-leads` and `public-candidates`):
-   - Dispatched immediately before returning `{ ok: true }` via `runAfterResponse(sendLeadAlert(...))`, which uses `EdgeRuntime.waitUntil`.
-   - The mailer's reply body is checked: Apps Script answers HTTP 200 even when it rejects the secret or throws, so anything other than `{"ok":true}` is logged as `[mailer] ... rejected` in the function logs.
-   - Timeout: 8 seconds (`AbortController`).
-   - Error handling: Non-throwing (never breaks user submission if external mailer is slow or down).
+   - `OPS_NOTIFY_ENABLED`: Set to `true` to enable generic notify messages (candidate alerts).
 4. **Commits**:
-   - `764ebdb`: Pre-requisite docs & prompt addition.
    - `687c97f`: `feat(public-leads): email the team via Apps Script when a website lead arrives`.
+   - `d1a4531`: `feat(public-candidates): email the team when a candidate applies or joins the talent pool`.
 
 ---
 
@@ -83,67 +91,114 @@ The new architecture decouples the browser from Google Apps Script by introducin
 
 1. **Project & Deployment**:
    - Deployment ID: `AKfycbzQsiRS_moV0oiB7wJ0xr8ac-Etbl_ZPuAvSL6ZcbRBT1bWafidad2nNqZrpkvDREHH`
-   - Active Version: Version 12
+   - Active Version: Version 13
    - Execute as: `Me`
    - Who has access: `Anyone`
 2. **Script Properties** (Project Settings → Script Properties):
    - `OPS_ALERT_SECRET`: Shared random secret matching `LEAD_ALERT_SECRET` in Supabase.
    - `ALERT_TO`: Destination email address (`hello@jantahr.com`).
 3. **Script Implementation** (`Code.gs`):
-   - **Routing**: `doPost` inspects incoming body:
+   - **Routing**: `doPost` routes between `handleOpsNotify_` (for candidate applications/alerts) and `handleOpsAlert_` (for AI training leads):
      ```javascript
      function doPost(e) {
        var data = null;
-       try {
-         data = JSON.parse(e.postData.contents);
-       } catch (err) {}
-       if (data && data.source === 'jantahr-ops') return handleOpsAlert_(data);
+       try { data = JSON.parse(e.postData.contents); } catch (err) {}
+       if (data && data.source === 'jantahr-ops') {
+         return data.kind === 'notify' ? handleOpsNotify_(data) : handleOpsAlert_(data);
+       }
        // ... existing legacy form submission flow ...
      }
      ```
-   - **`handleOpsAlert_(data)`**:
-     - Secret validation against `OPS_ALERT_SECRET`.
-     - Uses **`GmailApp.sendEmail`** instead of `MailApp.sendEmail` (uses existing authorized Gmail OAuth scopes; avoids authorization errors).
-     - Sends plain-text email with `Reply-To` set to the candidate's email (`options.replyTo = l.email`).
-     - Appends backup row to Google Sheet tab `"AI Training Leads"`.
-     - Returns `ContentService.createTextOutput(JSON.stringify({ ok: true })).setMimeType(ContentService.MimeType.JSON)`.
+   - **`handleOpsAlert_(data)`**: Formats lead notification, sends via `GmailApp.sendEmail`, appends backup row to Google Sheet tab `"AI Training Leads"`.
+   - **`handleOpsNotify_(data)`**: Generic notify handler sending verbatim plain-text messages with `Reply-To` set to candidate. No Sheet row is written for candidates.
 
 ---
 
-## 3. Deployment & Maintenance Runbook
+## 3. Candidate Alert Rules (`public-candidates`)
 
-### How to redeploy the Ops Edge Function:
+When someone applies for a job or joins the talent pool on the website, Ops saves the candidate first, then emails the team through Apps Script:
+
+1. **Alert Contents**:
+   - Full name, email, phone, headline, years of experience, salary expectation, availability, skills, CV upload indicator.
+   - Vacancy's custom screening questions paired with candidate answers.
+   - Cover letter / notes.
+   - `Reply-To` set to the candidate's email.
+2. **Three Application Scenarios**:
+   - **Application to Open Public Vacancy**: Application created under vacancy pipeline; email subject: `New application: <Name> — <Job Title>`.
+   - **General Talent Pool** (slug `general-talent-pool` or none): Added to talent pool; email subject: `New talent pool registration: <Name>`.
+   - **Application to Closed/Unavailable Vacancy**: Added to talent pool; flagged in subject line: `New candidate (vacancy closed): <Name> — <Slug>`.
+   - **Repeat Applications**: A repeat application to the exact same vacancy sends nothing to prevent duplicate spam.
+3. **Timeline Notes Fallback**:
+   - In Ops, notes belong to an application record. When there is no application (e.g. general talent pool registration), notes are written directly to the candidate's timeline (`activities` table) so cover notes, country, and LinkedIn URLs are never lost.
+
+---
+
+## 4. Production Verification History
+
+### Verification 1: AI Training Leads (`public-leads`)
+* **Test Date**: 8 October 2026
+* **Form URL**: `https://www.jantahr.com/ai-training`
+* **Result**:
+  - Website displayed success confirmation with 0 CSP errors.
+  - Lead recorded in Ops `leads` (`stage: 'new'`, interest: `AI Awareness and Workplace Readiness`).
+  - Web submission recorded in `web_submissions`.
+  - Email delivered to `hello@jantahr.com` from `JantaHR Website`.
+
+### Verification 2: Candidate Alerts (`public-candidates`)
+* **Test Date**: 9 October 2026
+* **Test Address**: `adhayajeff@gmail.com` (Candidate: *Freelance Product*)
+* **Result**:
+  - Candidate profile updated with headline `Test candidate`.
+  - Timeline activity created in Ops with note:  
+    *"Registered on the website. Added to the talent pool.\n\nAutomated test of candidate alerts"*
+  - Candidate visible in Ops interface under **Delivery > Talent Pool**.
+  - Email delivered to `hello@jantahr.com` with subject:  
+    `New talent pool registration: TEST - please ignore`
+
+---
+
+## 5. Maintenance Runbook
+
+### How to redeploy Edge Functions:
 
 ```bash
+# Redeploy Leads Function
 supabase functions deploy public-leads --project-ref qjsgqskigjqrzjftunhg --no-verify-jwt
+
+# Redeploy Candidates Function
+supabase functions deploy public-candidates --project-ref qjsgqskigjqrzjftunhg --no-verify-jwt
 ```
 
-### How to update secrets on Ops:
+### How to update or verify secrets:
 
 ```bash
+# View active secrets (hashes only)
+supabase secrets list --project-ref qjsgqskigjqrzjftunhg
+
+# Set or update secrets
 supabase secrets set --project-ref qjsgqskigjqrzjftunhg \
   LEAD_ALERT_WEBHOOK_URL="https://script.google.com/macros/s/AKfycbzQsiRS_moV0oiB7wJ0xr8ac-Etbl_ZPuAvSL6ZcbRBT1bWafidad2nNqZrpkvDREHH/exec" \
-  LEAD_ALERT_SECRET="<secret-value>"
+  LEAD_ALERT_SECRET="<secret-value>" \
+  OPS_NOTIFY_ENABLED=true
 ```
 
-### How to test the mailer directly from CLI:
+### How to run test suites:
 
 ```bash
-curl -i -X POST \
-  -H "Content-Type: text/plain;charset=utf-8" \
-  -d '{"source":"jantahr-ops","secret":"<secret-value>","lead":{"leadType":"ai_training","fullName":"Test Lead","email":"candidate@example.com","phone":"0772000000","organization":"Test Org","trainingUnit":"AI Awareness","message":"Test message","sourcePage":"/ai-training","submittedAt":"2026-10-08T15:00:00Z"}}' \
-  "https://script.google.com/macros/s/AKfycbzQsiRS_moV0oiB7wJ0xr8ac-Etbl_ZPuAvSL6ZcbRBT1bWafidad2nNqZrpkvDREHH/exec"
-```
+# Test shared mailer & candidate alert formatting (Deno)
+deno test supabase/functions/_shared/
 
-_Expected response: HTTP 302 redirect with `{"ok":true}` at the echo location._
+# Test entire Ops application (Vitest + Lint + Typecheck)
+npm run check
+```
 
 ---
 
-## 4. Troubleshooting Log & Key Learnings
+## 6. Troubleshooting Log & Key Learnings
 
 1. **CSP (Content Security Policy) Violations**:
    - The browser cannot send requests to `script.google.com` due to website CSP rules.
-   - **Solution**: The website must only communicate with `qjsgqskigjqrzjftunhg.supabase.co`. All Google services are contacted server-side by the Edge Function.
+   - **Solution**: The website must only communicate with `qjsgqskigjqrzjftunhg.supabase.co`. All Google services are contacted server-side by the Edge Functions.
 2. **Supabase CLI Authorization**:
    - When deploying Edge Functions or setting secrets, the CLI must be authenticated as the account owning `qjsgqskigjqrzjftunhg` (`theagency256@gmail.com`). Use `npx supabase login` to switch accounts.
 3. **Google Apps Script `MailApp` vs `GmailApp`**:
@@ -152,105 +207,3 @@ _Expected response: HTTP 302 redirect with `{"ok":true}` at the echo location._
 4. **Google Apps Script Deployment URL Preservation**:
    - Always choose **Manage deployments → Edit (pencil icon) → Version: New version** to update the existing deployment.
    - Do **not** click "New deployment", as that generates a different deployment ID and URL.
-
----
-
-## 5. Candidate alerts (`public-candidates`)
-
-When someone applies for a job or joins the talent pool on the website, Ops
-saves the candidate first, then emails the team through the same Apps Script.
-
-- **What the email contains:** name, email, phone, headline, experience, salary
-  expectation, availability, skills, whether a CV was uploaded, the vacancy's
-  screening questions paired with the answers, and the cover letter / notes.
-  Reply-To is the candidate's email. Formatting lives in
-  `supabase/functions/_shared/candidate-alert.ts` (tested with
-  `deno test supabase/functions/_shared/`).
-- **Three cases:** an application to an open public vacancy; a talent-pool
-  registration (slug `general-talent-pool` or none); an application to a slug
-  that is not an open public vacancy (added to the talent pool, flagged in the
-  subject). A repeat application to the same vacancy sends nothing.
-- **Talent-pool notes:** notes are stored on an application, so when there is no
-  application they are written to the candidate's timeline instead of being
-  dropped.
-- **No Sheet row** is written for candidates.
-
-### Message format (generic "notify")
-
-Candidate alerts use a generic message the Apps Script sends verbatim. Future
-alerts (reminders, overdue invoices) will reuse it with no further script
-changes:
-
-```json
-{
-  "source": "jantahr-ops",
-  "secret": "…",
-  "kind": "notify",
-  "subject": "New application: Jane Namuli — Payroll Officer",
-  "text": "plain-text body",
-  "replyTo": "jane@example.com"
-}
-```
-
-### Switch-on checklist
-
-The Supabase secret `OPS_NOTIFY_ENABLED` gates notify messages. Until it is
-`true`, Ops logs `[mailer] candidate alert: skipped` and sends nothing, so an
-older script version can never receive a message it doesn't understand.
-
-1. **Apps Script** (`Code.gs`): route notify messages before the lead handler,
-   add the handler, then **Manage deployments → Edit → New version** (keep the URL):
-
-   ```javascript
-   // in doPost, replace the jantahr-ops line with:
-   if (data && data.source === 'jantahr-ops') {
-     return data.kind === 'notify' ? handleOpsNotify_(data) : handleOpsAlert_(data);
-   }
-
-   function handleOpsNotify_(data) {
-     var props = PropertiesService.getScriptProperties();
-     var out = function (obj) {
-       return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(
-         ContentService.MimeType.JSON,
-       );
-     };
-     if (!data.secret || data.secret !== props.getProperty('OPS_ALERT_SECRET')) {
-       return out({ ok: false });
-     }
-     var to = props.getProperty('ALERT_TO') || 'hello@jantahr.com';
-     var subject = String(data.subject || 'JantaHR Ops notification')
-       .replace(/[\r\n]+/g, ' ')
-       .slice(0, 200);
-     var options = { name: 'JantaHR Ops' };
-     if (data.replyTo) options.replyTo = String(data.replyTo);
-     GmailApp.sendEmail(to, subject, String(data.text || ''), options);
-     return out({ ok: true });
-   }
-   ```
-
-2. **Deploy both functions** (CLI logged in as the project owner):
-
-   ```bash
-   supabase functions deploy public-leads --project-ref qjsgqskigjqrzjftunhg --no-verify-jwt
-   supabase functions deploy public-candidates --project-ref qjsgqskigjqrzjftunhg --no-verify-jwt
-   ```
-
-3. **Turn notify on:**
-
-   ```bash
-   supabase secrets set --project-ref qjsgqskigjqrzjftunhg OPS_NOTIFY_ENABLED=true
-   ```
-
-4. **Test** with a talent-pool registration (no CV needed). Use the team's test
-   address `adhayajeff@gmail.com`:
-
-   ```bash
-   curl -s -X POST "https://qjsgqskigjqrzjftunhg.supabase.co/functions/v1/public-candidates" \
-     -H "Content-Type: application/json" -H "Origin: https://www.jantahr.com" \
-     -d '{"fullName":"TEST - please ignore","email":"adhayajeff@gmail.com","phone":"0772000000","headline":"Test candidate","vacancySlug":"general-talent-pool","notes":"Automated test of candidate alerts","honeypot":"","submittedAt":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'"}'
-   # → {"ok":true}, then an email "New talent pool registration: TEST - please ignore"
-   ```
-
-   Then check Ops → Talent Pool for the test candidate (its timeline shows the
-   notes) and archive or remove it. If no email arrives, read the function logs
-   for a `[mailer]` line.
