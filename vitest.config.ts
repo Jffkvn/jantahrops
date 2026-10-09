@@ -17,7 +17,7 @@ export default defineConfig({
     // are opt-in via `npm run test:rls` (vitest.rls.config.ts). They are
     // excluded here, never skipped there — see tests/rls/README.
     // supabase/functions run on Deno and are tested with `deno test`.
-    exclude: ['**/node_modules/**', '**/dist/**', 'tests/rls/**', 'supabase/functions/**'],
+    exclude: ['**/node_modules/**', '**/dist/**', 'tests/rls/**', 'supabase/functions/**', 'netlify/**', '.kilo/**'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html'],

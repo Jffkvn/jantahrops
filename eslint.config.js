@@ -10,7 +10,7 @@ export default tseslint.config(
     // supabase/functions run on Deno; tools/ are standalone one-off Node/Python
     // scripts. Neither belongs to the app's TS project, and type-aware rules
     // error out on any file no tsconfig claims.
-    ignores: ['dist/**', 'coverage/**', 'node_modules/**', 'supabase/functions/**', 'tools/**'],
+    ignores: ['dist/**', 'coverage/**', 'node_modules/**', 'supabase/functions/**', 'netlify/**', '.kilo/**', 'tools/**'],
   },
   js.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,
