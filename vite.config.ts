@@ -17,7 +17,9 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
-    sourcemap: true,
+    // Source maps locally; never on the hosted build (Netlify sets NETLIFY=true),
+    // where they would publish the app's source code.
+    sourcemap: process.env.NETLIFY !== 'true',
     target: 'es2022',
   },
 });

@@ -113,3 +113,23 @@ Deno.test('team alert flags a matched contact whose details differ', () => {
   assertStringIncludes(t.text, 'Matched contact: "Freelance Product" is already in Ops');
   assertStringIncludes(t.text, 'The contact was not changed');
 });
+
+Deno.test('team alerts link straight to the record when Ops is hosted', () => {
+  const base = {
+    leadType: 'contact',
+    fullName: 'Kev',
+    email: '',
+    phone: '',
+    organization: '',
+    interest: '',
+    message: '',
+    sourcePage: '/contact',
+    submittedAt: '2026-10-09T07:27:00Z',
+  };
+  const withLink = buildLeadAlert({ ...base, opsLink: 'https://ops.jantahr.com/leads?lead=l1' });
+  assertStringIncludes(withLink.html, 'href="https://ops.jantahr.com/leads?lead=l1"');
+  assertStringIncludes(withLink.text, 'Open in JantaHR Ops: https://ops.jantahr.com/leads?lead=l1');
+  const without = buildLeadAlert(base);
+  assertStringIncludes(without.text, 'The lead is in JantaHR Ops → Leads');
+  assert(!without.html.includes('Open in JantaHR Ops'));
+});

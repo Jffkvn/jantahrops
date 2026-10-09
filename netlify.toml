@@ -1,0 +1,37 @@
+# JantaHR Ops on Netlify. Internal tool: every page needs a login, nothing is
+# indexed, and the browser may only talk to this site and our Supabase project.
+
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "22"
+  VITE_APP_ENV = "production"
+  # VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY and VITE_APP_URL are set in the
+  # Netlify UI (Site configuration → Environment variables).
+
+# Single-page app: every route is served by index.html.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    # The script hash is the theme snippet inline in index.html. If that snippet
+    # changes, recompute it (see docs/HOSTING.md) or the theme will flash.
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'sha256-zQQ0Pc3GcHoCl9K3aIUZdVrUP8nEjvvwJJknM8PaA4s='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://qjsgqskigjqrzjftunhg.supabase.co wss://qjsgqskigjqrzjftunhg.supabase.co; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=(), payment=()"
+    Strict-Transport-Security = "max-age=31536000; includeSubDomains"
+    X-Robots-Tag = "noindex, nofollow"
+
+# Hashed assets never change: cache them for a year.
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"

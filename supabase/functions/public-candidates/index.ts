@@ -22,6 +22,7 @@ import { buildCandidateAlert, type ScreeningQuestion } from '../_shared/candidat
 import { applicationConfirmation, isDeliverableEmail, talentPoolConfirmation } from '../_shared/confirmations.ts';
 import { contactDifferences, differenceNote, type ExistingContact, gapFill } from '../_shared/contact-match.ts';
 import { runAfterResponse, sendNotification } from '../_shared/mailer.ts';
+import { opsLink } from '../_shared/ops-url.ts';
 import { sendConfirmation } from '../_shared/resend.ts';
 
 // --- config ----------------------------------------------------------------
@@ -470,6 +471,9 @@ Deno.serve(async (req: Request) => {
         submittedAt,
         existingContact:
           knownContact && differences.length > 0 ? { name: knownContact.full_name, differences } : null,
+        opsLink: applicationId
+          ? opsLink(`/recruitment/${vacancy!.id}?application=${applicationId}`)
+          : opsLink(`/talent?candidate=${candidateId}`),
       });
       background.push(sendNotification({ ...alert, replyTo: email }, 'candidate alert'));
     }

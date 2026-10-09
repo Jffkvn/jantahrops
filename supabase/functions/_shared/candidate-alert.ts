@@ -29,6 +29,8 @@ export interface CandidateAlertInput {
   submittedAt: string;
   /** Set when the form matched an existing contact whose details differ. */
   existingContact?: { name: string; differences: string[] } | null;
+  /** Direct link to the application or candidate in Ops, when Ops is hosted. */
+  opsLink?: string | null;
 }
 
 const MAX_NOTES_CHARS = 4000;
@@ -131,7 +133,11 @@ export function buildCandidateAlert(input: CandidateAlertInput): RenderedEmail {
     blocks.push({ kind: 'quote', title: 'Cover letter and notes', text: clipped });
   }
 
-  blocks.push({ kind: 'paragraph', text: nextStep });
+  blocks.push(
+    input.opsLink
+      ? { kind: 'button', label: 'Open in JantaHR Ops', url: input.opsLink }
+      : { kind: 'paragraph', text: nextStep },
+  );
 
   return renderEmail(subject, { audience: 'team', preheader: `${name} · ${role || 'talent pool'}`, heading, blocks });
 }

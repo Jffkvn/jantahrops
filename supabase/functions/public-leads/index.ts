@@ -17,6 +17,7 @@ import { enquiryConfirmation, isDeliverableEmail, trainingConfirmation } from '.
 import { contactDifferences, differenceNote, type ExistingContact, gapFill } from '../_shared/contact-match.ts';
 import { buildLeadAlert } from '../_shared/lead-alert.ts';
 import { runAfterResponse, sendLeadAlert } from '../_shared/mailer.ts';
+import { opsLink } from '../_shared/ops-url.ts';
 import { sendConfirmation } from '../_shared/resend.ts';
 
 // --- config ----------------------------------------------------------------
@@ -281,6 +282,7 @@ Deno.serve(async (req: Request) => {
       interest,
       existingContact:
           knownContact && differences.length > 0 ? { name: knownContact.full_name, differences } : null,
+      opsLink: opsLink(`/leads?lead=${lead.id}`),
     });
     const confirmation =
       leadType === 'ai_training'

@@ -14,6 +14,7 @@
 
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { buildDigest, type DigestData, isEmptyDigest } from '../_shared/digest.ts';
+import { OPS_URL } from '../_shared/ops-url.ts';
 import { sendConfirmation } from '../_shared/resend.ts';
 
 const SECRET = Deno.env.get('DIGEST_CRON_SECRET') ?? '';
@@ -161,13 +162,13 @@ Deno.serve(async (req: Request) => {
           .map((p) => ({ email: p.email, firstName: (p.full_name ?? '').trim().split(' ')[0] ?? '' }));
 
   if (dryRun) {
-    const preview = buildDigest(data, recipients[0]?.firstName ?? '');
+    const preview = buildDigest(data, recipients[0]?.firstName ?? '', OPS_URL);
     return json({ ok: true, dryRun: true, recipients: recipients.length, subject: preview.subject, text: preview.text });
   }
 
   let sent = 0;
   for (const r of recipients) {
-    const email = buildDigest(data, r.firstName);
+    const email = buildDigest(data, r.firstName, OPS_URL);
     const ok = await sendConfirmation(r.email, email, 'daily_digest', `digest-${day.date}-${r.email}`, { from: FROM });
     if (ok) sent++;
   }

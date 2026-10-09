@@ -15,6 +15,8 @@ export interface LeadAlertInput {
   submittedAt: string;
   /** Set when the form matched an existing contact whose details differ. */
   existingContact?: { name: string; differences: string[] } | null;
+  /** Direct link to the lead in Ops, when Ops is hosted. */
+  opsLink?: string | null;
 }
 
 function oneLine(s: string): string {
@@ -56,7 +58,11 @@ export function buildLeadAlert(input: LeadAlertInput): RenderedEmail {
   const blocks: Block[] = [{ kind: 'details', rows }];
   const message = input.message.trim();
   if (message) blocks.push({ kind: 'quote', title: 'Message', text: message.slice(0, 4000) });
-  blocks.push({ kind: 'paragraph', text: 'The lead is in JantaHR Ops → Leads, in the New column.' });
+  blocks.push(
+    input.opsLink
+      ? { kind: 'button', label: 'Open in JantaHR Ops', url: input.opsLink }
+      : { kind: 'paragraph', text: 'The lead is in JantaHR Ops → Leads, in the New column.' },
+  );
 
   const heading = `New ${noun}`;
   return renderEmail(`New ${noun}: ${name}${interest ? ` — ${interest}` : ''}`, {

@@ -63,7 +63,11 @@ function capped(items: string[], total: number): string[] {
   return total > items.length ? [...items, `…and ${total - items.length} more in Ops`] : items;
 }
 
-export function buildDigest(d: DigestData, recipientFirstName: string): RenderedEmail {
+export function buildDigest(
+  d: DigestData,
+  recipientFirstName: string,
+  opsUrl: string | null = null,
+): RenderedEmail {
   const blocks: Block[] = [];
   const counts: string[] = [];
   const a = d.newArrivals;
@@ -140,7 +144,11 @@ export function buildDigest(d: DigestData, recipientFirstName: string): Rendered
     );
   }
 
-  blocks.push({ kind: 'paragraph', text: 'Open JantaHR Ops → Today to work through it.' });
+  blocks.push(
+    opsUrl
+      ? { kind: 'button', label: 'Open Today in JantaHR Ops', url: opsUrl }
+      : { kind: 'paragraph', text: 'Open JantaHR Ops → Today to work through it.' },
+  );
 
   const name = recipientFirstName.trim();
   return renderEmail(`Your JantaHR day: ${counts.join(', ')}`, {

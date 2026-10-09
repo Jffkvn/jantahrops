@@ -31,7 +31,8 @@ export type Block =
   | { kind: 'list'; items: string[] }
   | { kind: 'callout'; title: string; text: string; link?: { label: string; url: string } }
   | { kind: 'details'; rows: { label: string; value: string }[] }
-  | { kind: 'quote'; title: string; text: string };
+  | { kind: 'quote'; title: string; text: string }
+  | { kind: 'button'; label: string; url: string };
 
 function renderBlock(b: Block): string {
   switch (b.kind) {
@@ -56,6 +57,8 @@ function renderBlock(b: Block): string {
             `<tr><td style="padding:8px 12px 8px 0;border-bottom:1px solid ${C.border};color:${C.muted};white-space:nowrap;vertical-align:top;width:1%;">${escapeHtml(r.label)}</td><td style="padding:8px 0;border-bottom:1px solid ${C.border};color:${C.deep};vertical-align:top;word-break:break-word;">${textToHtml(r.value)}</td></tr>`,
         )
         .join('')}</table>`;
+    case 'button':
+      return `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:8px 0 16px;border-collapse:separate;"><tr><td style="background:${C.primary};border-radius:8px;"><a href="${escapeHtml(b.url)}" style="display:inline-block;padding:11px 20px;font-family:${FONT};font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;">${escapeHtml(b.label)}</a></td></tr></table>`;
     case 'quote':
       return `<p style="margin:16px 0 6px;font-weight:600;color:${C.deep};">${escapeHtml(b.title)}</p><div style="margin:0 0 16px;padding:12px 14px;background:${C.offwhite};border-radius:8px;font-size:14px;line-height:1.6;color:${C.deep};word-break:break-word;">${textToHtml(b.text)}</div>`;
   }
@@ -131,6 +134,9 @@ export function renderEmailText(content: EmailContent): string {
         break;
       case 'quote':
         out.push(`${b.title}:`, b.text, '');
+        break;
+      case 'button':
+        out.push(`${b.label}: ${b.url}`, '');
         break;
     }
   }

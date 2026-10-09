@@ -47,3 +47,9 @@ Deno.test('long lists are capped with a pointer to Ops', () => {
   assertStringIncludes(text, '…and 3 more in Ops');
   assertStringIncludes(text, 'Good morning\n');
 });
+
+Deno.test('the digest links to Today when Ops is hosted', () => {
+  const d = { ...empty, tasks: [{ title: 'Call', dueAt: '2026-10-09T06:00:00.000Z', assignee: null }] };
+  assertStringIncludes(buildDigest(d, 'Jeff', 'https://ops.jantahr.com').text, 'Open Today in JantaHR Ops: https://ops.jantahr.com');
+  assertStringIncludes(buildDigest(d, 'Jeff').text, 'Open JantaHR Ops → Today');
+});
