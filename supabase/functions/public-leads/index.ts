@@ -14,6 +14,7 @@
 
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { enquiryConfirmation, isDeliverableEmail, trainingConfirmation } from '../_shared/confirmations.ts';
+import { contactDifferences, differenceNote, type ExistingContact, gapFill } from '../_shared/contact-match.ts';
 import { buildLeadAlert } from '../_shared/lead-alert.ts';
 import { runAfterResponse, sendLeadAlert } from '../_shared/mailer.ts';
 import { sendConfirmation } from '../_shared/resend.ts';
@@ -180,15 +181,34 @@ Deno.serve(async (req: Request) => {
     }
 
     // Contact: find-or-create by email, then phone.
-    let contactId: string | null = null;
+    const CONTACT_FIELDS = 'id, full_name, phone_e164, organisation_id';
+    let knownContact: ExistingContact | null = null;
     if (email) {
-      const { data } = await supabase.from('contacts').select('id').ilike('email', email).maybeSingle();
-      contactId = data?.id ?? null;
+      const { data } = await supabase.from('contacts').select(CONTACT_FIELDS).ilike('email', email).maybeSingle();
+      knownContact = data;
     }
-    if (!contactId && phone) {
-      const { data } = await supabase.from('contacts').select('id').eq('phone_e164', phone).maybeSingle();
-      contactId = data?.id ?? null;
+    if (!knownContact && phone) {
+      const { data } = await supabase.from('contacts').select(CONTACT_FIELDS).eq('phone_e164', phone).maybeSingle();
+      knownContact = data;
     }
+    let contactId: string | null = knownContact?.id ?? null;
+
+    // A known person: fill gaps only, and record (never apply) any differences.
+    let differences: string[] = [];
+    if (knownContact) {
+      const submitted = {
+        fullName,
+        phone,
+        rawPhone: payload.phone ?? '',
+        organisationId: organisationId,
+      };
+      const fill = gapFill(knownContact, submitted);
+      if (Object.keys(fill).length > 0) {
+        await supabase.from('contacts').update(fill).eq('id', knownContact.id);
+      }
+      differences = contactDifferences(knownContact, submitted);
+    }
+    const mismatchNote = knownContact ? differenceNote(knownContact, differences) : null;
     if (!contactId) {
       const { data, error } = await supabase
         .from('contacts')
@@ -222,7 +242,11 @@ Deno.serve(async (req: Request) => {
     if (leadError) throw leadError;
 
     // The raw message and metadata as the first timeline entry.
-    const noteParts = [payload.message?.trim(), payload.sourcePage ? `Page: ${payload.sourcePage}` : '']
+    const noteParts = [
+      payload.message?.trim(),
+      payload.sourcePage ? `Page: ${payload.sourcePage}` : '',
+      mismatchNote ?? '',
+    ]
       .filter(Boolean)
       .join('\n');
     await supabase.from('activities').insert({
@@ -252,7 +276,12 @@ Deno.serve(async (req: Request) => {
       sourcePage: payload.sourcePage ?? '',
       submittedAt,
     };
-    const teamEmail = buildLeadAlert({ ...leadFields, interest });
+    const teamEmail = buildLeadAlert({
+      ...leadFields,
+      interest,
+      existingContact:
+          knownContact && differences.length > 0 ? { name: knownContact.full_name, differences } : null,
+    });
     const confirmation =
       leadType === 'ai_training'
         ? trainingConfirmation({ fullName, trainingUnit: interest })

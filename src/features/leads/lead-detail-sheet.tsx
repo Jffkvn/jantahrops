@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Phone, Mail, MessageCircle, Building2, Send } from 'lucide-react';
+import { Phone, Mail, MessageCircle, Building2, Send, Trash2, UserX } from 'lucide-react';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -20,6 +20,9 @@ import { NextActionDot } from './next-action-dot';
 import { NextActionEditor } from './next-action-editor';
 import { useLead, useLeadTimeline, useUpdateLeadStage, useAddLeadNote } from './use-leads';
 import type { LeadStage } from '@/types/database';
+import { DangerZone } from '@/features/privacy/danger-zone';
+import { DeleteLeadDialog } from '@/features/privacy/delete-lead-dialog';
+import { ErasePersonDialog } from '@/features/privacy/erase-person-dialog';
 
 export function LeadDetailSheet({
   leadId,
@@ -31,18 +34,20 @@ export function LeadDetailSheet({
   return (
     <Sheet onOpenChange={onOpenChange} open={leadId !== null}>
       <SheetContent className="w-full overflow-y-auto p-0 sm:max-w-lg" side="right">
-        {leadId && <LeadDetailBody leadId={leadId} />}
+        {leadId && <LeadDetailBody leadId={leadId} onClose={() => onOpenChange(false)} />}
       </SheetContent>
     </Sheet>
   );
 }
 
-function LeadDetailBody({ leadId }: { leadId: string }) {
+function LeadDetailBody({ leadId, onClose }: { leadId: string; onClose: () => void }) {
   const { data: lead, isLoading } = useLead(leadId);
   const { data: timeline } = useLeadTimeline(leadId);
   const updateStage = useUpdateLeadStage();
   const addNote = useAddLeadNote(leadId);
   const [note, setNote] = useState('');
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [eraseOpen, setEraseOpen] = useState(false);
 
   if (isLoading || !lead) {
     return (
@@ -189,6 +194,34 @@ function LeadDetailBody({ leadId }: { leadId: string }) {
           )}
         </ol>
       </div>
+
+      <DangerZone>
+        <Button onClick={() => setDeleteOpen(true)} size="sm" variant="secondary">
+          <Trash2 className="mr-1 h-3.5 w-3.5 text-danger" />
+          Delete lead
+        </Button>
+        {contact && (
+          <Button onClick={() => setEraseOpen(true)} size="sm" variant="secondary">
+            <UserX className="mr-1 h-3.5 w-3.5 text-danger" />
+            Erase this person
+          </Button>
+        )}
+      </DangerZone>
+      <DeleteLeadDialog
+        leadId={lead.id}
+        onDeleted={onClose}
+        onOpenChange={setDeleteOpen}
+        open={deleteOpen}
+        personName={contact?.full_name ?? 'The person'}
+      />
+      {contact && (
+        <ErasePersonDialog
+          contactId={contact.id}
+          onErased={onClose}
+          onOpenChange={setEraseOpen}
+          open={eraseOpen}
+        />
+      )}
     </div>
   );
 }

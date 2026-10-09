@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { Phone, Mail, MessageCircle, Building2, Send, Check, Target, UserRound, Receipt } from 'lucide-react';
+import { Phone, Mail, MessageCircle, Building2, Send, Check, Target, UserRound, Receipt, UserX } from 'lucide-react';
 import { toast } from 'sonner';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
@@ -18,6 +18,8 @@ import {
   useUpdateContact,
   useResolveCandidateReview,
 } from './use-directory';
+import { DangerZone } from '@/features/privacy/danger-zone';
+import { ErasePersonDialog } from '@/features/privacy/erase-person-dialog';
 
 export function ContactDetailSheet({
   contactId,
@@ -47,6 +49,7 @@ function Body({ contactId, onClose }: { contactId: string; onClose: () => void }
   const [note, setNote] = useState('');
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
+  const [eraseOpen, setEraseOpen] = useState(false);
 
   useEffect(() => {
     if (contact) setNameDraft(contact.full_name);
@@ -248,6 +251,19 @@ function Body({ contactId, onClose }: { contactId: string; onClose: () => void }
           )}
         </ol>
       </div>
+
+      <DangerZone>
+        <Button onClick={() => setEraseOpen(true)} size="sm" variant="secondary">
+          <UserX className="mr-1 h-3.5 w-3.5 text-danger" />
+          Erase this person
+        </Button>
+      </DangerZone>
+      <ErasePersonDialog
+        contactId={contact.id}
+        onErased={onClose}
+        onOpenChange={setEraseOpen}
+        open={eraseOpen}
+      />
     </div>
   );
 }

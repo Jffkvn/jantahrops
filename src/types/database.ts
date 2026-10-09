@@ -795,6 +795,9 @@ export interface Database {
     };
     Functions: {
       is_admin: { Args: Record<never, never>; Returns: boolean };
+      delete_lead: { Args: { p_lead_id: string }; Returns: undefined };
+      contact_erasure_preview: { Args: { p_contact_id: string }; Returns: unknown };
+      erase_contact: { Args: { p_contact_id: string }; Returns: undefined };
       is_staff: { Args: Record<never, never>; Returns: boolean };
       generate_signals: { Args: Record<never, never>; Returns: undefined };
       next_document_number: { Args: { p_type: DocumentType }; Returns: string };

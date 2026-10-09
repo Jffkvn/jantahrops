@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
-import { Phone, Mail, MessageCircle, FileText, ChevronRight, Star } from 'lucide-react';
+import { Phone, Mail, MessageCircle, FileText, ChevronRight, Star, UserX } from 'lucide-react';
 import { toast } from 'sonner';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { StatusChip } from '@/components/status-chip';
@@ -19,6 +19,8 @@ import {
 } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Plus } from 'lucide-react';
+import { DangerZone } from '@/features/privacy/danger-zone';
+import { ErasePersonDialog } from '@/features/privacy/erase-person-dialog';
 
 export function CandidateDetailSheet({
   candidateId,
@@ -32,13 +34,15 @@ export function CandidateDetailSheet({
   return (
     <Sheet onOpenChange={onOpenChange} open={open}>
       <SheetContent className="w-full overflow-y-auto p-0 sm:max-w-lg" side="right">
-        {candidateId && <CandidateDetailBody candidateId={candidateId} />}
+        {candidateId && (
+          <CandidateDetailBody candidateId={candidateId} onClose={() => onOpenChange(false)} />
+        )}
       </SheetContent>
     </Sheet>
   );
 }
 
-function CandidateDetailBody({ candidateId }: { candidateId: string }) {
+function CandidateDetailBody({ candidateId, onClose }: { candidateId: string; onClose: () => void }) {
   const navigate = useNavigate();
   const { data: candidate, isLoading } = useCandidate(candidateId);
   const { data: applications } = useCandidateApplications(candidateId);
@@ -46,6 +50,7 @@ function CandidateDetailBody({ candidateId }: { candidateId: string }) {
   const createApplication = useCreateApplication();
   const updateCandidate = useUpdateCandidate(candidateId);
   const [vacancyId, setVacancyId] = useState('');
+  const [eraseOpen, setEraseOpen] = useState(false);
 
   if (isLoading || !candidate) {
     return (
@@ -234,6 +239,19 @@ function CandidateDetailBody({ candidateId }: { candidateId: string }) {
           )}
         </ul>
       </div>
+
+      <DangerZone>
+        <Button onClick={() => setEraseOpen(true)} size="sm" variant="secondary">
+          <UserX className="mr-1 h-3.5 w-3.5 text-danger" />
+          Erase this person
+        </Button>
+      </DangerZone>
+      <ErasePersonDialog
+        contactId={candidate.contact_id}
+        onErased={onClose}
+        onOpenChange={setEraseOpen}
+        open={eraseOpen}
+      />
     </div>
   );
 }

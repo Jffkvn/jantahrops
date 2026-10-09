@@ -13,6 +13,8 @@ export interface LeadAlertInput {
   message: string;
   sourcePage: string;
   submittedAt: string;
+  /** Set when the form matched an existing contact whose details differ. */
+  existingContact?: { name: string; differences: string[] } | null;
 }
 
 function oneLine(s: string): string {
@@ -45,6 +47,12 @@ export function buildLeadAlert(input: LeadAlertInput): RenderedEmail {
     { label: 'Submitted', value: formatEat(input.submittedAt) },
   ];
 
+  if (input.existingContact) {
+    rows.push({
+      label: 'Matched contact',
+      value: `"${input.existingContact.name}" is already in Ops with the same email or phone. The form gave ${input.existingContact.differences.join(' and ')}. The contact was not changed. Check it in Ops.`,
+    });
+  }
   const blocks: Block[] = [{ kind: 'details', rows }];
   const message = input.message.trim();
   if (message) blocks.push({ kind: 'quote', title: 'Message', text: message.slice(0, 4000) });

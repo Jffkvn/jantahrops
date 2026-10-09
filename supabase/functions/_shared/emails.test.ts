@@ -96,3 +96,20 @@ Deno.test('formatEat shows Kampala time', async () => {
   assertEquals(formatEat('2026-10-09T09:12:00Z'), '9 Oct 2026, 12:12 PM EAT');
   assertEquals(formatEat('not a date'), 'not a date');
 });
+
+Deno.test('team alert flags a matched contact whose details differ', () => {
+  const t = buildLeadAlert({
+    leadType: 'contact',
+    fullName: 'kev Odhis',
+    email: 'adhayajeff@gmail.com',
+    phone: '0720123567',
+    organization: '',
+    interest: 'HR consulting',
+    message: '',
+    sourcePage: '/contact',
+    submittedAt: '2026-10-09T07:27:00Z',
+    existingContact: { name: 'Freelance Product', differences: ['name "kev Odhis"'] },
+  });
+  assertStringIncludes(t.text, 'Matched contact: "Freelance Product" is already in Ops');
+  assertStringIncludes(t.text, 'The contact was not changed');
+});

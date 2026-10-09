@@ -27,6 +27,8 @@ export interface CandidateAlertInput {
   screeningAnswers?: Record<string, unknown> | null;
   notes?: string | null;
   submittedAt: string;
+  /** Set when the form matched an existing contact whose details differ. */
+  existingContact?: { name: string; differences: string[] } | null;
 }
 
 const MAX_NOTES_CHARS = 4000;
@@ -96,6 +98,12 @@ export function buildCandidateAlert(input: CandidateAlertInput): RenderedEmail {
   rows.push({ label: 'CV', value: input.hasCv ? 'Uploaded, open it in Ops' : 'Not provided' });
   rows.push({ label: 'Submitted', value: formatEat(input.submittedAt) });
 
+  if (input.existingContact) {
+    rows.push({
+      label: 'Matched contact',
+      value: `"${input.existingContact.name}" is already in Ops with the same email or phone. The form gave ${input.existingContact.differences.join(' and ')}. The contact was not changed. Check it in Ops.`,
+    });
+  }
   const blocks: Block[] = [{ kind: 'details', rows }];
 
   // Screening answers, in the vacancy's question order, then any extras.

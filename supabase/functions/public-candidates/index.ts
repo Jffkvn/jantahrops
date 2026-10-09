@@ -20,6 +20,7 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { buildCandidateAlert, type ScreeningQuestion } from '../_shared/candidate-alert.ts';
 import { applicationConfirmation, isDeliverableEmail, talentPoolConfirmation } from '../_shared/confirmations.ts';
+import { contactDifferences, differenceNote, type ExistingContact, gapFill } from '../_shared/contact-match.ts';
 import { runAfterResponse, sendNotification } from '../_shared/mailer.ts';
 import { sendConfirmation } from '../_shared/resend.ts';
 
@@ -237,15 +238,34 @@ Deno.serve(async (req: Request) => {
 
   try {
     // Contact: find-or-create by email, then phone; add the 'candidate' role.
-    let contactId: string | null = null;
+    const CONTACT_FIELDS = 'id, full_name, phone_e164, organisation_id';
+    let knownContact: ExistingContact | null = null;
     if (email) {
-      const { data } = await supabase.from('contacts').select('id').ilike('email', email).maybeSingle();
-      contactId = data?.id ?? null;
+      const { data } = await supabase.from('contacts').select(CONTACT_FIELDS).ilike('email', email).maybeSingle();
+      knownContact = data;
     }
-    if (!contactId && phone) {
-      const { data } = await supabase.from('contacts').select('id').eq('phone_e164', phone).maybeSingle();
-      contactId = data?.id ?? null;
+    if (!knownContact && phone) {
+      const { data } = await supabase.from('contacts').select(CONTACT_FIELDS).eq('phone_e164', phone).maybeSingle();
+      knownContact = data;
     }
+    let contactId: string | null = knownContact?.id ?? null;
+
+    // A known person: fill gaps only, and record (never apply) any differences.
+    let differences: string[] = [];
+    if (knownContact) {
+      const submitted = {
+        fullName,
+        phone,
+        rawPhone: payload.phone ?? '',
+        organisationId: null,
+      };
+      const fill = gapFill(knownContact, submitted);
+      if (Object.keys(fill).length > 0) {
+        await supabase.from('contacts').update(fill).eq('id', knownContact.id);
+      }
+      differences = contactDifferences(knownContact, submitted);
+    }
+    const mismatchNote = knownContact ? differenceNote(knownContact, differences) : null;
     if (!contactId) {
       const { data, error } = await supabase
         .from('contacts')
@@ -398,6 +418,7 @@ Deno.serve(async (req: Request) => {
       ? `Registered on the website for ${vacancy?.title ?? vacancySlug}. Application created.`
       : 'Registered on the website. Added to the talent pool.';
     if (!applicationId && notes) activityBody += `\n\n${notes}`;
+    if (mismatchNote) activityBody += `\n\n${mismatchNote}`;
     await supabase.from('activities').insert({
       subject_type: 'candidate',
       subject_id: candidateId,
@@ -437,6 +458,8 @@ Deno.serve(async (req: Request) => {
         screeningAnswers: payload.screeningAnswers ?? null,
         notes,
         submittedAt,
+        existingContact:
+          knownContact && differences.length > 0 ? { name: knownContact.full_name, differences } : null,
       });
       background.push(sendNotification({ ...alert, replyTo: email }, 'candidate alert'));
     }
