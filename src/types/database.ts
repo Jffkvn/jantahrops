@@ -157,6 +157,9 @@ export type LeadRow = {
   next_action_note: string | null;
   lost_reason: string | null;
   converted_organisation_id: string | null;
+  // Null = arrived from the website and nobody has reviewed it yet.
+  reviewed_at: string | null;
+  reviewed_by: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -539,6 +542,9 @@ export type CandidateRow = {
   import_batch: string | null;
   needs_review: boolean;
   review_reason: string | null;
+  // Null = arrived from the website and nobody has reviewed it yet.
+  reviewed_at: string | null;
+  reviewed_by: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -554,6 +560,9 @@ export type ApplicationRow = {
   owner_id: string | null;
   notes: string | null;
   rejected_reason: string | null;
+  // Null = arrived from the website and nobody has reviewed it yet.
+  reviewed_at: string | null;
+  reviewed_by: string | null;
   created_at: string;
   updated_at: string;
 };

@@ -6,10 +6,17 @@ import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { StatusChip } from '@/components/status-chip';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/cn';
-import { formatUGX, formatRelative } from '@/lib/format';
+import { formatDateTime, formatUGX, formatRelative } from '@/lib/format';
 import { cvSignedUrl } from './recruitment-api';
 import { AVAILABILITY_LABELS, stageMeta } from './recruitment-meta';
-import { useCandidate, useCandidateApplications, useCreateApplication, useVacanciesList, useUpdateCandidate } from './use-recruitment';
+import {
+  useCandidate,
+  useCandidateApplications,
+  useCandidateTimeline,
+  useCreateApplication,
+  useVacanciesList,
+  useUpdateCandidate,
+} from './use-recruitment';
 import {
   Select,
   SelectContent,
@@ -42,10 +49,17 @@ export function CandidateDetailSheet({
   );
 }
 
-function CandidateDetailBody({ candidateId, onClose }: { candidateId: string; onClose: () => void }) {
+function CandidateDetailBody({
+  candidateId,
+  onClose,
+}: {
+  candidateId: string;
+  onClose: () => void;
+}) {
   const navigate = useNavigate();
   const { data: candidate, isLoading } = useCandidate(candidateId);
   const { data: applications } = useCandidateApplications(candidateId);
+  const { data: timeline } = useCandidateTimeline(candidateId);
   const { data: vacanciesData } = useVacanciesList({ status: 'open', pageSize: 100 });
   const createApplication = useCreateApplication();
   const updateCandidate = useUpdateCandidate(candidateId);
@@ -57,7 +71,7 @@ function CandidateDetailBody({ candidateId, onClose }: { candidateId: string; on
       <div className="space-y-4 p-6">
         <Skeleton className="h-8 w-48" />
         <Skeleton className="h-4 w-32" />
-        <Skeleton className="h-40 w-full rounded-card" />
+        <Skeleton className="rounded-card h-40 w-full" />
       </div>
     );
   }
@@ -80,14 +94,14 @@ function CandidateDetailBody({ candidateId, onClose }: { candidateId: string; on
 
   return (
     <div>
-      <div className="border-b border-border bg-surface p-6">
+      <div className="border-border bg-surface border-b p-6">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <h2 className="truncate font-display text-xl font-semibold text-ink">
+            <h2 className="font-display text-ink truncate text-xl font-semibold">
               {contact?.full_name ?? 'Unnamed candidate'}
             </h2>
             {candidate.headline && (
-              <p className="mt-0.5 text-sm text-ink-secondary">{candidate.headline}</p>
+              <p className="text-ink-secondary mt-0.5 text-sm">{candidate.headline}</p>
             )}
           </div>
           <StatusChip variant={candidate.is_available ? 'success' : 'neutral'}>
@@ -110,7 +124,7 @@ function CandidateDetailBody({ candidateId, onClose }: { candidateId: string; on
             <QuickAction href={`mailto:${contact.email}`} icon={Mail} label="Email" />
           )}
           <button
-            className="inline-flex items-center gap-1.5 rounded-control border border-border bg-surface px-3 py-1.5 text-sm text-ink transition-colors hover:bg-surface-sunken"
+            className="rounded-control border-border bg-surface text-ink hover:bg-surface-sunken inline-flex items-center gap-1.5 border px-3 py-1.5 text-sm transition-colors"
             onClick={() => void downloadCv()}
             type="button"
           >
@@ -120,7 +134,7 @@ function CandidateDetailBody({ candidateId, onClose }: { candidateId: string; on
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-x-4 gap-y-3 border-b border-border p-6 text-sm">
+      <div className="border-border grid grid-cols-2 gap-x-4 gap-y-3 border-b p-6 text-sm">
         {candidate.years_experience != null && (
           <Fact label="Experience">{candidate.years_experience} yrs</Fact>
         )}
@@ -133,21 +147,23 @@ function CandidateDetailBody({ candidateId, onClose }: { candidateId: string; on
           </Fact>
         )}
         <div>
-          <p className="text-xs text-ink-muted">Rating</p>
+          <p className="text-ink-muted text-xs">Rating</p>
           <div className="mt-0.5 flex items-center gap-0.5">
             {[1, 2, 3, 4, 5].map((n) => (
               <button
                 aria-label={`Rate ${n} out of 5`}
                 className="p-0.5"
                 key={n}
-                onClick={() => updateCandidate.mutate({ rating: candidate.rating === n ? null : n })}
+                onClick={() =>
+                  updateCandidate.mutate({ rating: candidate.rating === n ? null : n })
+                }
                 type="button"
               >
                 <Star
                   className={cn(
                     'h-4 w-4 transition-colors',
                     candidate.rating != null && candidate.rating >= n
-                      ? 'fill-current text-warning'
+                      ? 'text-warning fill-current'
                       : 'text-ink-muted',
                   )}
                 />
@@ -160,12 +176,12 @@ function CandidateDetailBody({ candidateId, onClose }: { candidateId: string; on
       </div>
 
       {candidate.skills.length > 0 && (
-        <div className="border-b border-border p-6">
-          <label className="mb-2 block text-xs font-semibold text-ink-secondary">Skills</label>
+        <div className="border-border border-b p-6">
+          <label className="text-ink-secondary mb-2 block text-xs font-semibold">Skills</label>
           <div className="flex flex-wrap gap-1.5">
             {candidate.skills.map((s) => (
               <span
-                className="rounded-pill bg-surface-sunken px-2 py-0.5 text-xs text-ink-secondary"
+                className="rounded-pill bg-surface-sunken text-ink-secondary px-2 py-0.5 text-xs"
                 key={s}
               >
                 {s}
@@ -176,15 +192,15 @@ function CandidateDetailBody({ candidateId, onClose }: { candidateId: string; on
       )}
 
       {candidate.notes && (
-        <div className="border-b border-border p-6">
-          <label className="mb-1 block text-xs font-semibold text-ink-secondary">Notes</label>
-          <p className="text-sm text-ink">{candidate.notes}</p>
+        <div className="border-border border-b p-6">
+          <label className="text-ink-secondary mb-1 block text-xs font-semibold">Notes</label>
+          <p className="text-ink text-sm">{candidate.notes}</p>
         </div>
       )}
 
       {/* Add to vacancy */}
-      <div className="border-b border-border p-6">
-        <label className="mb-1.5 block text-xs font-semibold text-ink-secondary">
+      <div className="border-border border-b p-6">
+        <label className="text-ink-secondary mb-1.5 block text-xs font-semibold">
           Add to a vacancy
         </label>
         <div className="flex gap-2">
@@ -213,36 +229,59 @@ function CandidateDetailBody({ candidateId, onClose }: { candidateId: string; on
 
       {/* Application history */}
       <div className="p-6">
-        <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-secondary">
+        <h3 className="text-ink-secondary mb-3 text-xs font-semibold tracking-wide uppercase">
           Applications
         </h3>
         <ul className="space-y-2">
           {(applications ?? []).map((app) => (
             <li key={app.id}>
               <button
-                className="flex w-full items-center gap-3 rounded-control border border-border px-3 py-2.5 text-left transition-colors hover:border-border-strong"
-                onClick={() => void navigate(`/recruitment/${app.vacancy_id}?application=${app.id}`)}
+                className="rounded-control border-border hover:border-border-strong flex w-full items-center gap-3 border px-3 py-2.5 text-left transition-colors"
+                onClick={() =>
+                  void navigate(`/recruitment/${app.vacancy_id}?application=${app.id}`)
+                }
                 type="button"
               >
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-ink">
+                  <p className="text-ink truncate text-sm font-medium">
                     {app.vacancy_title ?? 'Unknown vacancy'}
                   </p>
-                  <p className="mt-0.5 text-xs text-ink-secondary">{stageMeta(app.stage).label}</p>
+                  <p className="text-ink-secondary mt-0.5 text-xs">{stageMeta(app.stage).label}</p>
                 </div>
-                <ChevronRight className="h-4 w-4 shrink-0 text-ink-muted" />
+                <ChevronRight className="text-ink-muted h-4 w-4 shrink-0" />
               </button>
             </li>
           ))}
           {(applications ?? []).length === 0 && (
-            <li className="text-sm text-ink-muted">No applications yet.</li>
+            <li className="text-ink-muted text-sm">No applications yet.</li>
           )}
         </ul>
       </div>
 
+      {/* Timeline: website registrations (with their notes), and any
+          differences between a form and this person's record. */}
+      {(timeline ?? []).length > 0 && (
+        <div className="border-border border-t p-6">
+          <h3 className="text-ink-secondary mb-3 text-xs font-semibold tracking-wide uppercase">
+            Activity
+          </h3>
+          <ol className="space-y-3">
+            {(timeline ?? []).map((a) => (
+              <li className="flex gap-3" key={a.id}>
+                <span className="bg-border-strong mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full" />
+                <div className="min-w-0">
+                  <p className="text-ink text-sm whitespace-pre-line">{a.body}</p>
+                  <p className="text-ink-muted text-xs">{formatDateTime(a.occurred_at)}</p>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+
       <DangerZone>
         <Button onClick={() => setEraseOpen(true)} size="sm" variant="secondary">
-          <UserX className="mr-1 h-3.5 w-3.5 text-danger" />
+          <UserX className="text-danger mr-1 h-3.5 w-3.5" />
           Erase this person
         </Button>
       </DangerZone>
@@ -267,7 +306,7 @@ function QuickAction({
 }) {
   return (
     <a
-      className="inline-flex items-center gap-1.5 rounded-control border border-border bg-surface px-3 py-1.5 text-sm text-ink transition-colors hover:bg-surface-sunken"
+      className="rounded-control border-border bg-surface text-ink hover:bg-surface-sunken inline-flex items-center gap-1.5 border px-3 py-1.5 text-sm transition-colors"
       href={href}
       rel="noreferrer"
       target="_blank"
@@ -281,8 +320,8 @@ function QuickAction({
 function Fact({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <p className="text-xs text-ink-muted">{label}</p>
-      <div className="mt-0.5 text-ink">{children}</div>
+      <p className="text-ink-muted text-xs">{label}</p>
+      <div className="text-ink mt-0.5">{children}</div>
     </div>
   );
 }

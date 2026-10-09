@@ -461,6 +461,20 @@ export async function getApplicationTimeline(id: string): Promise<ActivityRow[]>
   return data ?? [];
 }
 
+/** The candidate's own timeline: website registrations, notes, mismatches. */
+export async function getCandidateTimeline(id: string): Promise<ActivityRow[]> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from('activities')
+    .select('*')
+    .eq('subject_type', 'candidate')
+    .eq('subject_id', id)
+    .order('occurred_at', { ascending: false })
+    .limit(50);
+  if (error) throw error;
+  return data ?? [];
+}
+
 // --- interviews -------------------------------------------------------------
 
 export interface ScheduleInterviewInput {

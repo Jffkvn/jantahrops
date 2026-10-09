@@ -415,3 +415,6 @@ enabled = true
 
 [functions.public-leads]
 verify_jwt = false
+
+[functions.daily-digest]
+verify_jwt = false

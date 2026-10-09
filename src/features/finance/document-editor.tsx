@@ -615,7 +615,7 @@ export function DocumentEditor() {
                   <li className="flex gap-3" key={a.id}>
                     <span className="bg-border-strong mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full" />
                     <div className="min-w-0">
-                      <p className="text-ink text-sm">{a.body}</p>
+                      <p className="whitespace-pre-line text-ink text-sm">{a.body}</p>
                       <p className="text-ink-muted text-xs">{formatDateTime(a.occurred_at)}</p>
                     </div>
                   </li>

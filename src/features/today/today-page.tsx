@@ -14,6 +14,7 @@ import { SignalsSection } from '@/features/signals/signals-section';
 import { DayTasksSection } from '@/features/tasks/day-tasks-section';
 import { useTaskCounts } from '@/features/tasks/use-tasks';
 import { useDayView } from './use-today';
+import { NewArrivalsSection } from './new-arrivals-section';
 import type { LeadWithRelations } from '@/features/leads/leads-api';
 
 export function TodayPage() {
@@ -45,20 +46,23 @@ export function TodayPage() {
     <div>
       <PageHeader description={formatDate(new Date())} title={`Good day, ${firstName}`} />
 
+      {/* Website submissions nobody has looked at yet. Hidden when none. */}
+      <NewArrivalsSection onOpenLead={setOpenLeadId} />
+
       {/* NEEDS YOU — the primary block. */}
       <section>
-        <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-secondary">
+        <h2 className="text-ink-secondary mb-3 text-xs font-semibold tracking-wide uppercase">
           Needs you
         </h2>
 
         {isLoading ? (
           <div className="space-y-2">
-            <Skeleton className="h-16 w-full rounded-card" />
-            <Skeleton className="h-16 w-full rounded-card" />
+            <Skeleton className="rounded-card h-16 w-full" />
+            <Skeleton className="rounded-card h-16 w-full" />
           </div>
         ) : due.length === 0 ? (
           tasksDue > 0 ? (
-            <p className="rounded-card border border-border bg-surface px-4 py-3 text-sm text-ink-secondary">
+            <p className="rounded-card border-border bg-surface text-ink-secondary border px-4 py-3 text-sm">
               No follow-ups are due — your tasks are below.
             </p>
           ) : (
@@ -78,7 +82,10 @@ export function TodayPage() {
       </section>
 
       {/* Signals — flagged problems with a one-click action. Hidden when none. */}
-      <SignalsSection onOpenApplication={(id) => void openApplication(id)} onOpenLead={setOpenLeadId} />
+      <SignalsSection
+        onOpenApplication={(id) => void openApplication(id)}
+        onOpenLead={setOpenLeadId}
+      />
 
       {/* Tasks due today or late. Renders nothing when there are none. */}
       <DayTasksSection />
@@ -123,24 +130,24 @@ function FollowUpRow({ lead, onOpen }: { lead: LeadWithRelations; onOpen: () => 
   return (
     <li>
       <button
-        className="flex w-full items-center gap-3 rounded-card border border-border bg-surface px-4 py-3 text-left transition-colors hover:border-border-strong"
+        className="rounded-card border-border bg-surface hover:border-border-strong flex w-full items-center gap-3 border px-4 py-3 text-left transition-colors"
         onClick={onOpen}
         type="button"
       >
         <NextActionDot nextActionAt={lead.next_action_at} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className="truncate text-sm font-medium text-ink">
+            <span className="text-ink truncate text-sm font-medium">
               {lead.contact?.full_name ?? 'Unknown contact'}
             </span>
             {lead.organisation && (
-              <span className="flex items-center gap-1 truncate text-xs text-ink-muted">
+              <span className="text-ink-muted flex items-center gap-1 truncate text-xs">
                 <Building2 className="h-3 w-3 shrink-0" />
                 {lead.organisation.name}
               </span>
             )}
           </div>
-          <p className="truncate text-xs text-ink-secondary">
+          <p className="text-ink-secondary truncate text-xs">
             {lead.next_action_note || 'Follow-up due'}
             {' · '}
             <span className="text-ink-muted">
@@ -149,9 +156,9 @@ function FollowUpRow({ lead, onOpen }: { lead: LeadWithRelations; onOpen: () => 
           </p>
         </div>
         {lead.value_ugx > 0 && (
-          <Money className="text-sm font-medium text-ink" compact value={BigInt(lead.value_ugx)} />
+          <Money className="text-ink text-sm font-medium" compact value={BigInt(lead.value_ugx)} />
         )}
-        <ChevronRight className="h-4 w-4 shrink-0 text-ink-muted" />
+        <ChevronRight className="text-ink-muted h-4 w-4 shrink-0" />
       </button>
     </li>
   );
@@ -172,21 +179,25 @@ function Stat({
 }) {
   const inner = (
     <>
-      <div className="flex h-9 w-9 items-center justify-center rounded-control bg-surface-sunken text-ink-muted">
+      <div className="rounded-control bg-surface-sunken text-ink-muted flex h-9 w-9 items-center justify-center">
         <Icon className="h-4 w-4" />
       </div>
       <div className="min-w-0">
-        <div className="num text-lg font-semibold text-ink">
+        <div className="num text-ink text-lg font-semibold">
           {loading ? <Skeleton className="h-6 w-12" /> : value}
         </div>
-        <p className="text-xs text-ink-muted">{label}</p>
+        <p className="text-ink-muted text-xs">{label}</p>
       </div>
     </>
   );
   const cls =
     'flex items-center gap-3 rounded-card border border-border bg-surface px-4 py-3 text-left';
   return onClick ? (
-    <button className={`${cls} transition-colors hover:border-border-strong`} onClick={onClick} type="button">
+    <button
+      className={`${cls} hover:border-border-strong transition-colors`}
+      onClick={onClick}
+      type="button"
+    >
       {inner}
     </button>
   ) : (

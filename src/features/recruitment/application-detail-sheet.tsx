@@ -383,7 +383,7 @@ function ApplicationDetailBody({
             <li className="flex gap-3" key={a.id}>
               <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-border-strong" />
               <div className="min-w-0">
-                <p className="text-sm text-ink">{a.body}</p>
+                <p className="whitespace-pre-line text-sm text-ink">{a.body}</p>
                 <p className="text-xs text-ink-muted">{formatDateTime(a.occurred_at)}</p>
               </div>
             </li>

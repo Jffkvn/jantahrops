@@ -9,6 +9,7 @@ import {
   closeVacancy,
   listApplications,
   getApplicationTimeline,
+  getCandidateTimeline,
   getCandidate,
   updateCandidate,
   moveStage,
@@ -35,6 +36,7 @@ const keys = {
   vacancy: (id: string) => ['recruitment', 'vacancy', id] as const,
   applications: (vacancyId: string) => ['recruitment', 'applications', vacancyId] as const,
   timeline: (id: string) => ['recruitment', 'timeline', id] as const,
+  candidateTimeline: (id: string) => ['recruitment', 'candidate-timeline', id] as const,
   shortlist: (vacancyId: string, stage: ApplicationStage) =>
     ['recruitment', 'shortlist', vacancyId, stage] as const,
   candidates: (p: ListCandidatesParams) => ['recruitment', 'candidates', p] as const,
@@ -72,6 +74,14 @@ export function useApplicationTimeline(id: string) {
   return useQuery({
     queryKey: keys.timeline(id),
     queryFn: () => getApplicationTimeline(id),
+    enabled: Boolean(id),
+  });
+}
+
+export function useCandidateTimeline(id: string) {
+  return useQuery({
+    queryKey: keys.candidateTimeline(id),
+    queryFn: () => getCandidateTimeline(id),
     enabled: Boolean(id),
   });
 }

@@ -410,6 +410,16 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    // A talent-pool registration (no vacancy) puts the person back in the
+    // "New from the website" queue, even if they registered before: they may
+    // have sent a new CV. A new application is queued as the application.
+    if (!vacancy) {
+      await supabase
+        .from('candidates')
+        .update({ reviewed_at: null, reviewed_by: null })
+        .eq('id', candidateId);
+    }
+
     // Timeline entry on the candidate. Notes only live on an application, so
     // without one (talent-pool form, closed vacancy) they go on the timeline —
     // otherwise the cover note, discipline, country and LinkedIn are lost.
