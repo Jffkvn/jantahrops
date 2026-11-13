@@ -114,7 +114,7 @@ export function CourseSheet({
 
   return (
     <Sheet onOpenChange={onOpenChange} open={open}>
-      <SheetContent className="w-full overflow-y-auto sm:max-w-md" side="right">
+      <SheetContent className="w-full overflow-y-auto sm:max-w-lg" side="right">
         <SheetHeader>
           <SheetTitle>{isEdit ? 'Edit course' : 'New course'}</SheetTitle>
           <SheetDescription>

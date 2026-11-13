@@ -86,7 +86,7 @@ export function TaskEditSheet({
 
   return (
     <Sheet onOpenChange={onOpenChange} open={task !== null}>
-      <SheetContent className="w-full overflow-y-auto sm:max-w-md" side="right">
+      <SheetContent className="w-full overflow-y-auto sm:max-w-lg" side="right">
         <SheetHeader>
           <SheetTitle>Edit task</SheetTitle>
           <SheetDescription>
