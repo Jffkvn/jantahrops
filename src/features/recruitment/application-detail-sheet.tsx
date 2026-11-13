@@ -44,7 +44,7 @@ export function ApplicationDetailSheet({
 }) {
   return (
     <Sheet onOpenChange={onOpenChange} open={open}>
-      <SheetContent className="w-full overflow-y-auto p-0 sm:max-w-lg" side="right">
+      <SheetContent className="p-0" side="center">
         {applicationId && (
           <ApplicationDetailBody applicationId={applicationId} vacancyId={vacancyId} />
         )}
@@ -142,9 +142,9 @@ function ApplicationDetailBody({
   };
 
   return (
-    <div>
+    <div className="flex max-h-[88vh] flex-col">
       {/* Header */}
-      <div className="border-b border-border bg-surface p-6">
+      <div className="shrink-0 border-b border-border bg-surface p-6 pr-12">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h2 className="truncate font-display text-xl font-semibold text-ink">
@@ -187,211 +187,230 @@ function ApplicationDetailBody({
         </div>
       </div>
 
-      {/* Candidate facts */}
-      <div className="grid grid-cols-2 gap-x-4 gap-y-3 border-b border-border p-6 text-sm">
-        {candidate?.rating != null && candidate.rating > 0 && (
-          <Fact label="Rating">
-            <span className="inline-flex items-center gap-1 text-ink">
-              <Star className="h-3.5 w-3.5 fill-current text-warning" />
-              {candidate.rating} / 5
-            </span>
-          </Fact>
-        )}
-        {candidate?.years_experience != null && (
-          <Fact label="Experience">{candidate.years_experience} yrs</Fact>
-        )}
-        {candidate?.salary_expectation_ugx != null && candidate.salary_expectation_ugx > 0 && (
-          <Fact label="Salary expectation">
-            {formatUGX(BigInt(candidate.salary_expectation_ugx))}
-          </Fact>
-        )}
-        {candidate?.availability && <Fact label="Availability">{candidate.availability}</Fact>}
-        <Fact label="Applied">{formatRelative(application.applied_at)}</Fact>
-        {application.source && <Fact label="Source">{application.source}</Fact>}
-      </div>
-
-      {/* Skills */}
-      {candidate && candidate.skills.length > 0 && (
-        <div className="border-b border-border p-6">
-          <label className="mb-2 block text-xs font-semibold text-ink-secondary">Skills</label>
-          <div className="flex flex-wrap gap-1.5">
-            {candidate.skills.map((s) => (
-              <span
-                className="rounded-pill bg-surface-sunken px-2 py-0.5 text-xs text-ink-secondary"
-                key={s}
-              >
-                {s}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Screening Responses */}
-      {application.screening_answers && Object.keys(application.screening_answers).length > 0 && (
-        <div className="border-b border-border p-6">
-          <div className="mb-3 flex items-center justify-between">
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-secondary">
-              Screening Question Responses
-            </h3>
-            <span className="rounded bg-surface-sunken px-2 py-0.5 text-[10px] font-semibold text-ink-secondary">
-              {Object.keys(application.screening_answers).length} answered
-            </span>
-          </div>
-          <div className="space-y-2.5">
-            {Object.entries(application.screening_answers).map(([key, val]) => {
-              const matchedQ = (vacancy?.screening_questions ?? []).find((q) => q.id === key);
-              const prompt = matchedQ ? matchedQ.question : key;
-              const answerText = formatAnswer(val);
-
-              return (
-                <div key={key} className="rounded-control border border-border bg-surface-sunken/40 p-3 text-xs">
-                  <p className="font-medium text-ink-secondary">{prompt}</p>
-                  <p className="mt-1 text-sm font-semibold text-ink">{answerText}</p>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Stage control */}
-      <div className="border-b border-border p-6">
-        <label className="mb-1.5 block text-xs font-semibold text-ink-secondary">Move stage</label>
-        <Select onValueChange={(v) => void onMove(v)} value={application.stage}>
-          <SelectTrigger className="w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {PIPELINE_STAGES.map((s) => (
-              <SelectItem key={s.value} value={s.value}>
-                {s.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {application.stage === 'rejected' && (
-          <Input
-            className="mt-2"
-            onChange={(e) => setRejectReason(e.target.value)}
-            placeholder="Reason for rejection (optional)"
-            value={rejectReason}
-          />
-        )}
-      </div>
-
-      {/* Interviews */}
-      <div className="border-b border-border p-6">
-        <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-secondary">
-            Interviews
-          </h3>
-        </div>
-
-        <div className="space-y-2">
-          {(interviews ?? []).map((interview) => (
-            <div className="rounded-control border border-border p-3" key={interview.id}>
-              <div className="flex items-center justify-between gap-2">
-                <span className="inline-flex items-center gap-1.5 text-sm text-ink">
-                  <Calendar className="h-3.5 w-3.5 text-ink-muted" />
-                  {interview.scheduled_at ? formatDateTime(interview.scheduled_at) : 'No time set'}
+      {/* 2-Column Body */}
+      <div className="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto lg:grid-cols-12">
+        {/* Left / Main column: Screening responses & Activity */}
+        <div className="border-b border-border lg:col-span-7 lg:border-b-0 lg:border-r">
+          {/* Screening Responses */}
+          {application.screening_answers && Object.keys(application.screening_answers).length > 0 && (
+            <div className="border-b border-border p-6">
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-secondary">
+                  Screening Question Responses
+                </h3>
+                <span className="rounded bg-surface-sunken px-2 py-0.5 text-[10px] font-semibold text-ink-secondary">
+                  {Object.keys(application.screening_answers).length} answered
                 </span>
-                <span className="text-xs text-ink-muted">{interview.mode ?? 'In person'}</span>
               </div>
-              {interview.outcome && (
-                <p className="mt-1 text-xs text-ink-secondary">Outcome: {interview.outcome}</p>
-              )}
-              {interview.feedback && (
-                <p className="mt-1 text-sm text-ink">{interview.feedback}</p>
-              )}
-              {interview.rating != null && interview.rating > 0 && (
-                <p className="mt-1 text-xs text-ink-muted">Rated {interview.rating} / 5</p>
-              )}
-              {!interview.feedback && !interview.outcome && (
-                <FeedbackForm interviewId={interview.id} onRecord={recordFeedback.mutateAsync} />
-              )}
+              <div className="space-y-2.5">
+                {Object.entries(application.screening_answers).map(([key, val]) => {
+                  const matchedQ = (vacancy?.screening_questions ?? []).find((q) => q.id === key);
+                  const prompt = matchedQ ? matchedQ.question : key;
+                  const answerText = formatAnswer(val);
+
+                  return (
+                    <div
+                      key={key}
+                      className="rounded-control border border-border bg-surface-sunken/40 p-3 text-xs"
+                    >
+                      <p className="font-medium text-ink-secondary">{prompt}</p>
+                      <p className="mt-1 text-sm font-semibold text-ink">{answerText}</p>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-          ))}
-          {(interviews ?? []).length === 0 && (
-            <p className="text-sm text-ink-muted">No interviews yet.</p>
           )}
+
+          {/* Timeline */}
+          <div className="p-6">
+            <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-secondary">
+              Activity
+            </h3>
+
+            <div className="mb-4 flex gap-2">
+              <Textarea
+                className="min-h-0"
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="Add a note…"
+                rows={2}
+                value={note}
+              />
+              <Button
+                className="shrink-0 self-end"
+                disabled={!note.trim() || addNote.isPending}
+                onClick={() => void submitNote()}
+                size="icon"
+                variant="primary"
+              >
+                <Send className="h-4 w-4" />
+              </Button>
+            </div>
+
+            <ol className="space-y-3">
+              {(timeline ?? []).map((a) => (
+                <li className="flex gap-3" key={a.id}>
+                  <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-border-strong" />
+                  <div className="min-w-0">
+                    <p className="whitespace-pre-line text-sm text-ink">{a.body}</p>
+                    <p className="text-xs text-ink-muted">{formatDateTime(a.occurred_at)}</p>
+                  </div>
+                </li>
+              ))}
+              {(timeline ?? []).length === 0 && (
+                <li className="text-sm text-ink-muted">No activity yet.</li>
+              )}
+            </ol>
+          </div>
         </div>
 
-        <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
-          <div>
-            <Label className="text-xs">Schedule at</Label>
-            <Input
-              className="mt-1"
-              onChange={(e) => setNewInterviewAt(e.target.value)}
-              type="datetime-local"
-              value={newInterviewAt}
-            />
-          </div>
-          <div>
-            <Label className="text-xs">Mode</Label>
-            <Select onValueChange={setNewInterviewMode} value={newInterviewMode}>
-              <SelectTrigger className="mt-1">
-                <SelectValue placeholder="In person" />
+        {/* Right / Sidebar column: Stage, Facts, Skills, Interviews */}
+        <div className="bg-surface-sunken/20 lg:col-span-5">
+          {/* Stage control */}
+          <div className="border-b border-border p-6">
+            <label className="mb-1.5 block text-xs font-semibold text-ink-secondary">
+              Move stage
+            </label>
+            <Select onValueChange={(v) => void onMove(v)} value={application.stage}>
+              <SelectTrigger className="w-full">
+                <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="in_person">In person</SelectItem>
-                <SelectItem value="video">Video call</SelectItem>
-                <SelectItem value="phone">Phone</SelectItem>
+                {PIPELINE_STAGES.map((s) => (
+                  <SelectItem key={s.value} value={s.value}>
+                    {s.label}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
+            {application.stage === 'rejected' && (
+              <Input
+                className="mt-2"
+                onChange={(e) => setRejectReason(e.target.value)}
+                placeholder="Reason for rejection (optional)"
+                value={rejectReason}
+              />
+            )}
+          </div>
+
+          {/* Candidate facts */}
+          <div className="grid grid-cols-2 gap-x-4 gap-y-3 border-b border-border p-6 text-sm">
+            {candidate?.rating != null && candidate.rating > 0 && (
+              <Fact label="Rating">
+                <span className="inline-flex items-center gap-1 text-ink">
+                  <Star className="h-3.5 w-3.5 fill-current text-warning" />
+                  {candidate.rating} / 5
+                </span>
+              </Fact>
+            )}
+            {candidate?.years_experience != null && (
+              <Fact label="Experience">{candidate.years_experience} yrs</Fact>
+            )}
+            {candidate?.salary_expectation_ugx != null && candidate.salary_expectation_ugx > 0 && (
+              <Fact label="Salary expectation">
+                {formatUGX(BigInt(candidate.salary_expectation_ugx))}
+              </Fact>
+            )}
+            {candidate?.availability && <Fact label="Availability">{candidate.availability}</Fact>}
+            <Fact label="Applied">{formatRelative(application.applied_at)}</Fact>
+            {application.source && <Fact label="Source">{application.source}</Fact>}
+          </div>
+
+          {/* Skills */}
+          {candidate && candidate.skills.length > 0 && (
+            <div className="border-b border-border p-6">
+              <label className="mb-2 block text-xs font-semibold text-ink-secondary">Skills</label>
+              <div className="flex flex-wrap gap-1.5">
+                {candidate.skills.map((s) => (
+                  <span
+                    className="rounded-pill bg-surface-sunken px-2 py-0.5 text-xs text-ink-secondary"
+                    key={s}
+                  >
+                    {s}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Interviews */}
+          <div className="p-6">
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-secondary">
+                Interviews
+              </h3>
+            </div>
+
+            <div className="space-y-2">
+              {(interviews ?? []).map((interview) => (
+                <div className="rounded-control border border-border bg-surface p-3" key={interview.id}>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="inline-flex items-center gap-1.5 text-sm text-ink">
+                      <Calendar className="h-3.5 w-3.5 text-ink-muted" />
+                      {interview.scheduled_at
+                        ? formatDateTime(interview.scheduled_at)
+                        : 'No time set'}
+                    </span>
+                    <span className="text-xs text-ink-muted">{interview.mode ?? 'In person'}</span>
+                  </div>
+                  {interview.outcome && (
+                    <p className="mt-1 text-xs text-ink-secondary">Outcome: {interview.outcome}</p>
+                  )}
+                  {interview.feedback && (
+                    <p className="mt-1 text-sm text-ink">{interview.feedback}</p>
+                  )}
+                  {interview.rating != null && interview.rating > 0 && (
+                    <p className="mt-1 text-xs text-ink-muted">Rated {interview.rating} / 5</p>
+                  )}
+                  {!interview.feedback && !interview.outcome && (
+                    <FeedbackForm
+                      interviewId={interview.id}
+                      onRecord={recordFeedback.mutateAsync}
+                    />
+                  )}
+                </div>
+              ))}
+              {(interviews ?? []).length === 0 && (
+                <p className="text-sm text-ink-muted">No interviews yet.</p>
+              )}
+            </div>
+
+            <div className="mt-4 grid grid-cols-1 gap-2">
+              <div>
+                <Label className="text-xs">Schedule at</Label>
+                <Input
+                  className="mt-1"
+                  onChange={(e) => setNewInterviewAt(e.target.value)}
+                  type="datetime-local"
+                  value={newInterviewAt}
+                />
+              </div>
+              <div>
+                <Label className="text-xs">Mode</Label>
+                <Select onValueChange={setNewInterviewMode} value={newInterviewMode}>
+                  <SelectTrigger className="mt-1">
+                    <SelectValue placeholder="In person" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="in_person">In person</SelectItem>
+                    <SelectItem value="video">Video call</SelectItem>
+                    <SelectItem value="phone">Phone</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <Button
+              className="mt-2 w-full"
+              disabled={!newInterviewAt || schedule.isPending}
+              onClick={() => void scheduleNew()}
+              size="sm"
+              variant="secondary"
+            >
+              <Calendar className="mr-1.5 h-4 w-4" />
+              Schedule interview
+            </Button>
           </div>
         </div>
-        <Button
-          className="mt-2 w-full"
-          disabled={!newInterviewAt || schedule.isPending}
-          onClick={() => void scheduleNew()}
-          size="sm"
-          variant="secondary"
-        >
-          <Calendar className="mr-1.5 h-4 w-4" />
-          Schedule interview
-        </Button>
-      </div>
-
-      {/* Timeline */}
-      <div className="p-6">
-        <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-secondary">
-          Activity
-        </h3>
-
-        <div className="mb-4 flex gap-2">
-          <Textarea
-            className="min-h-0"
-            onChange={(e) => setNote(e.target.value)}
-            placeholder="Add a note…"
-            rows={2}
-            value={note}
-          />
-          <Button
-            className="shrink-0 self-end"
-            disabled={!note.trim() || addNote.isPending}
-            onClick={() => void submitNote()}
-            size="icon"
-            variant="primary"
-          >
-            <Send className="h-4 w-4" />
-          </Button>
-        </div>
-
-        <ol className="space-y-3">
-          {(timeline ?? []).map((a) => (
-            <li className="flex gap-3" key={a.id}>
-              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-border-strong" />
-              <div className="min-w-0">
-                <p className="whitespace-pre-line text-sm text-ink">{a.body}</p>
-                <p className="text-xs text-ink-muted">{formatDateTime(a.occurred_at)}</p>
-              </div>
-            </li>
-          ))}
-          {(timeline ?? []).length === 0 && (
-            <li className="text-sm text-ink-muted">No activity yet.</li>
-          )}
-        </ol>
       </div>
     </div>
   );

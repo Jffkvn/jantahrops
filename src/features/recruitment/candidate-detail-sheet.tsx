@@ -40,7 +40,7 @@ export function CandidateDetailSheet({
 }) {
   return (
     <Sheet onOpenChange={onOpenChange} open={open}>
-      <SheetContent className="w-full overflow-y-auto p-0 sm:max-w-lg" side="right">
+      <SheetContent className="p-0" side="center">
         {candidateId && (
           <CandidateDetailBody candidateId={candidateId} onClose={() => onOpenChange(false)} />
         )}
@@ -93,8 +93,8 @@ function CandidateDetailBody({
   };
 
   return (
-    <div>
-      <div className="border-border bg-surface border-b p-6">
+    <div className="flex max-h-[88vh] flex-col">
+      <div className="border-border bg-surface shrink-0 border-b p-6 pr-12">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h2 className="font-display text-ink truncate text-xl font-semibold">
@@ -134,157 +134,168 @@ function CandidateDetailBody({
         </div>
       </div>
 
-      <div className="border-border grid grid-cols-2 gap-x-4 gap-y-3 border-b p-6 text-sm">
-        {candidate.years_experience != null && (
-          <Fact label="Experience">{candidate.years_experience} yrs</Fact>
-        )}
-        {candidate.availability && (
-          <Fact label="Availability">{AVAILABILITY_LABELS[candidate.availability]}</Fact>
-        )}
-        {candidate.salary_expectation_ugx != null && candidate.salary_expectation_ugx > 0 && (
-          <Fact label="Salary expectation">
-            {formatUGX(BigInt(candidate.salary_expectation_ugx))}
-          </Fact>
-        )}
-        <div>
-          <p className="text-ink-muted text-xs">Rating</p>
-          <div className="mt-0.5 flex items-center gap-0.5">
-            {[1, 2, 3, 4, 5].map((n) => (
-              <button
-                aria-label={`Rate ${n} out of 5`}
-                className="p-0.5"
-                key={n}
-                onClick={() =>
-                  updateCandidate.mutate({ rating: candidate.rating === n ? null : n })
-                }
-                type="button"
-              >
-                <Star
-                  className={cn(
-                    'h-4 w-4 transition-colors',
-                    candidate.rating != null && candidate.rating >= n
-                      ? 'text-warning fill-current'
-                      : 'text-ink-muted',
-                  )}
-                />
-              </button>
-            ))}
-          </div>
-        </div>
-        {candidate.source && <Fact label="Source">{candidate.source}</Fact>}
-        <Fact label="Added">{formatRelative(candidate.created_at)}</Fact>
-      </div>
-
-      {candidate.skills.length > 0 && (
-        <div className="border-border border-b p-6">
-          <label className="text-ink-secondary mb-2 block text-xs font-semibold">Skills</label>
-          <div className="flex flex-wrap gap-1.5">
-            {candidate.skills.map((s) => (
-              <span
-                className="rounded-pill bg-surface-sunken text-ink-secondary px-2 py-0.5 text-xs"
-                key={s}
-              >
-                {s}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {candidate.notes && (
-        <div className="border-border border-b p-6">
-          <label className="text-ink-secondary mb-1 block text-xs font-semibold">Notes</label>
-          <p className="text-ink text-sm">{candidate.notes}</p>
-        </div>
-      )}
-
-      {/* Add to vacancy */}
-      <div className="border-border border-b p-6">
-        <label className="text-ink-secondary mb-1.5 block text-xs font-semibold">
-          Add to a vacancy
-        </label>
-        <div className="flex gap-2">
-          <Select onValueChange={setVacancyId} value={vacancyId}>
-            <SelectTrigger className="flex-1">
-              <SelectValue placeholder="Choose an open vacancy" />
-            </SelectTrigger>
-            <SelectContent>
-              {openVacancies.map((v) => (
-                <SelectItem key={v.id} value={v.id}>
-                  {v.title}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button
-            disabled={!vacancyId || createApplication.isPending}
-            onClick={() => void addToVacancy()}
-            variant="primary"
-          >
-            <Plus className="mr-1 h-3.5 w-3.5" />
-            Add
-          </Button>
-        </div>
-      </div>
-
-      {/* Application history */}
-      <div className="p-6">
-        <h3 className="text-ink-secondary mb-3 text-xs font-semibold tracking-wide uppercase">
-          Applications
-        </h3>
-        <ul className="space-y-2">
-          {(applications ?? []).map((app) => (
-            <li key={app.id}>
-              <button
-                className="rounded-control border-border hover:border-border-strong flex w-full items-center gap-3 border px-3 py-2.5 text-left transition-colors"
-                onClick={() =>
-                  void navigate(`/recruitment/${app.vacancy_id}?application=${app.id}`)
-                }
-                type="button"
-              >
-                <div className="min-w-0 flex-1">
-                  <p className="text-ink truncate text-sm font-medium">
-                    {app.vacancy_title ?? 'Unknown vacancy'}
-                  </p>
-                  <p className="text-ink-secondary mt-0.5 text-xs">{stageMeta(app.stage).label}</p>
-                </div>
-                <ChevronRight className="text-ink-muted h-4 w-4 shrink-0" />
-              </button>
-            </li>
-          ))}
-          {(applications ?? []).length === 0 && (
-            <li className="text-ink-muted text-sm">No applications yet.</li>
+      <div className="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto lg:grid-cols-12">
+        {/* Left / Main column: Notes, Applications & Activity */}
+        <div className="border-border border-b lg:col-span-7 lg:border-r lg:border-b-0">
+          {candidate.notes && (
+            <div className="border-border border-b p-6">
+              <label className="text-ink-secondary mb-1 block text-xs font-semibold">Notes</label>
+              <p className="text-ink text-sm">{candidate.notes}</p>
+            </div>
           )}
-        </ul>
+
+          {/* Application history */}
+          <div className="p-6">
+            <h3 className="text-ink-secondary mb-3 text-xs font-semibold tracking-wide uppercase">
+              Applications
+            </h3>
+            <ul className="space-y-2">
+              {(applications ?? []).map((app) => (
+                <li key={app.id}>
+                  <button
+                    className="rounded-control border-border hover:border-border-strong flex w-full items-center gap-3 border px-3 py-2.5 text-left transition-colors"
+                    onClick={() =>
+                      void navigate(`/recruitment/${app.vacancy_id}?application=${app.id}`)
+                    }
+                    type="button"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="text-ink truncate text-sm font-medium">
+                        {app.vacancy_title ?? 'Unknown vacancy'}
+                      </p>
+                      <p className="text-ink-secondary mt-0.5 text-xs">
+                        {stageMeta(app.stage).label}
+                      </p>
+                    </div>
+                    <ChevronRight className="text-ink-muted h-4 w-4 shrink-0" />
+                  </button>
+                </li>
+              ))}
+              {(applications ?? []).length === 0 && (
+                <li className="text-ink-muted text-sm">No applications yet.</li>
+              )}
+            </ul>
+          </div>
+
+          {/* Timeline: website registrations (with their notes), and any
+              differences between a form and this person's record. */}
+          {(timeline ?? []).length > 0 && (
+            <div className="border-border border-t p-6">
+              <h3 className="text-ink-secondary mb-3 text-xs font-semibold tracking-wide uppercase">
+                Activity
+              </h3>
+              <ol className="space-y-3">
+                {(timeline ?? []).map((a) => (
+                  <li className="flex gap-3" key={a.id}>
+                    <span className="bg-border-strong mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full" />
+                    <div className="min-w-0">
+                      <p className="text-ink text-sm whitespace-pre-line">{a.body}</p>
+                      <p className="text-ink-muted text-xs">{formatDateTime(a.occurred_at)}</p>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
+        </div>
+
+        {/* Right / Sidebar column: Add to vacancy, Facts, Skills, DangerZone */}
+        <div className="bg-surface-sunken/20 lg:col-span-5">
+          {/* Add to vacancy */}
+          <div className="border-border border-b p-6">
+            <label className="text-ink-secondary mb-1.5 block text-xs font-semibold">
+              Add to a vacancy
+            </label>
+            <div className="flex gap-2">
+              <Select onValueChange={setVacancyId} value={vacancyId}>
+                <SelectTrigger className="flex-1">
+                  <SelectValue placeholder="Choose an open vacancy" />
+                </SelectTrigger>
+                <SelectContent>
+                  {openVacancies.map((v) => (
+                    <SelectItem key={v.id} value={v.id}>
+                      {v.title}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                disabled={!vacancyId || createApplication.isPending}
+                onClick={() => void addToVacancy()}
+                variant="primary"
+              >
+                <Plus className="mr-1 h-3.5 w-3.5" />
+                Add
+              </Button>
+            </div>
+          </div>
+
+          <div className="border-border grid grid-cols-2 gap-x-4 gap-y-3 border-b p-6 text-sm">
+            {candidate.years_experience != null && (
+              <Fact label="Experience">{candidate.years_experience} yrs</Fact>
+            )}
+            {candidate.availability && (
+              <Fact label="Availability">{AVAILABILITY_LABELS[candidate.availability]}</Fact>
+            )}
+            {candidate.salary_expectation_ugx != null && candidate.salary_expectation_ugx > 0 && (
+              <Fact label="Salary expectation">
+                {formatUGX(BigInt(candidate.salary_expectation_ugx))}
+              </Fact>
+            )}
+            <div>
+              <p className="text-ink-muted text-xs">Rating</p>
+              <div className="mt-0.5 flex items-center gap-0.5">
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <button
+                    aria-label={`Rate ${n} out of 5`}
+                    className="p-0.5"
+                    key={n}
+                    onClick={() =>
+                      updateCandidate.mutate({ rating: candidate.rating === n ? null : n })
+                    }
+                    type="button"
+                  >
+                    <Star
+                      className={cn(
+                        'h-4 w-4 transition-colors',
+                        candidate.rating != null && candidate.rating >= n
+                          ? 'text-warning fill-current'
+                          : 'text-ink-muted',
+                      )}
+                    />
+                  </button>
+                ))}
+              </div>
+            </div>
+            {candidate.source && <Fact label="Source">{candidate.source}</Fact>}
+            <Fact label="Added">{formatRelative(candidate.created_at)}</Fact>
+          </div>
+
+          {candidate.skills.length > 0 && (
+            <div className="border-border border-b p-6">
+              <label className="text-ink-secondary mb-2 block text-xs font-semibold">Skills</label>
+              <div className="flex flex-wrap gap-1.5">
+                {candidate.skills.map((s) => (
+                  <span
+                    className="rounded-pill bg-surface-sunken text-ink-secondary px-2 py-0.5 text-xs"
+                    key={s}
+                  >
+                    {s}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <DangerZone>
+            <Button onClick={() => setEraseOpen(true)} size="sm" variant="secondary">
+              <UserX className="text-danger mr-1 h-3.5 w-3.5" />
+              Erase this person
+            </Button>
+          </DangerZone>
+        </div>
       </div>
 
-      {/* Timeline: website registrations (with their notes), and any
-          differences between a form and this person's record. */}
-      {(timeline ?? []).length > 0 && (
-        <div className="border-border border-t p-6">
-          <h3 className="text-ink-secondary mb-3 text-xs font-semibold tracking-wide uppercase">
-            Activity
-          </h3>
-          <ol className="space-y-3">
-            {(timeline ?? []).map((a) => (
-              <li className="flex gap-3" key={a.id}>
-                <span className="bg-border-strong mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full" />
-                <div className="min-w-0">
-                  <p className="text-ink text-sm whitespace-pre-line">{a.body}</p>
-                  <p className="text-ink-muted text-xs">{formatDateTime(a.occurred_at)}</p>
-                </div>
-              </li>
-            ))}
-          </ol>
-        </div>
-      )}
-
-      <DangerZone>
-        <Button onClick={() => setEraseOpen(true)} size="sm" variant="secondary">
-          <UserX className="text-danger mr-1 h-3.5 w-3.5" />
-          Erase this person
-        </Button>
-      </DangerZone>
       <ErasePersonDialog
         contactId={candidate.contact_id}
         onErased={onClose}

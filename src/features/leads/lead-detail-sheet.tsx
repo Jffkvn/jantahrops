@@ -33,7 +33,7 @@ export function LeadDetailSheet({
 }) {
   return (
     <Sheet onOpenChange={onOpenChange} open={leadId !== null}>
-      <SheetContent className="w-full overflow-y-auto p-0 sm:max-w-lg" side="right">
+      <SheetContent className="p-0" side="center">
         {leadId && <LeadDetailBody leadId={leadId} onClose={() => onOpenChange(false)} />}
       </SheetContent>
     </Sheet>
@@ -68,9 +68,9 @@ function LeadDetailBody({ leadId, onClose }: { leadId: string; onClose: () => vo
   };
 
   return (
-    <div>
+    <div className="flex max-h-[88vh] flex-col">
       {/* Header */}
-      <div className="border-b border-border bg-surface p-6">
+      <div className="shrink-0 border-b border-border bg-surface p-6 pr-12">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h2 className="truncate font-display text-xl font-semibold text-ink">
@@ -104,109 +104,125 @@ function LeadDetailBody({ leadId, onClose }: { leadId: string; onClose: () => vo
         </div>
       </div>
 
-      {/* Facts */}
-      <div className="grid grid-cols-2 gap-x-4 gap-y-3 border-b border-border p-6 text-sm">
-        <Fact label="Value">
-          {lead.value_ugx > 0 ? (
-            <Money className="font-semibold text-ink" value={BigInt(lead.value_ugx)} />
-          ) : (
-            <span className="text-ink-muted">—</span>
-          )}
-        </Fact>
-        <Fact label="Owner">{lead.owner?.full_name ?? <span className="text-ink-muted">Unassigned</span>}</Fact>
-        <Fact label="Service">{lead.service_interest ?? <span className="text-ink-muted">—</span>}</Fact>
-        <Fact label="Source">{lead.source ?? <span className="text-ink-muted">—</span>}</Fact>
-        {contact?.phone_e164 && <Fact label="Phone">{formatPhoneDisplay(contact.phone_e164)}</Fact>}
-        {contact?.email && <Fact label="Email">{contact.email}</Fact>}
-        <Fact label="Created">{formatRelative(lead.created_at)}</Fact>
-      </div>
+      {/* 2-Column Body */}
+      <div className="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto lg:grid-cols-12">
+        {/* Left / Main column: Next follow-up & Activity */}
+        <div className="border-b border-border lg:col-span-7 lg:border-b-0 lg:border-r">
+          {/* Next follow-up — the field the Day View and reminders read. */}
+          <div className="border-b border-border p-6">
+            <div className="mb-2 flex items-center justify-between">
+              <label className="text-xs font-semibold text-ink-secondary">Next follow-up</label>
+              <NextActionDot nextActionAt={lead.next_action_at} withLabel />
+            </div>
+            <NextActionEditor
+              leadId={lead.id}
+              nextActionAt={lead.next_action_at}
+              nextActionNote={lead.next_action_note}
+            />
+          </div>
 
-      {/* Next follow-up — the field the Day View and reminders read. */}
-      <div className="border-b border-border p-6">
-        <div className="mb-2 flex items-center justify-between">
-          <label className="text-xs font-semibold text-ink-secondary">Next follow-up</label>
-          <NextActionDot nextActionAt={lead.next_action_at} withLabel />
-        </div>
-        <NextActionEditor
-          leadId={lead.id}
-          nextActionAt={lead.next_action_at}
-          nextActionNote={lead.next_action_note}
-        />
-      </div>
+          {/* Timeline */}
+          <div className="p-6">
+            <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-secondary">
+              Activity
+            </h3>
 
-      {/* Stage control */}
-      <div className="border-b border-border p-6">
-        <label className="mb-1.5 block text-xs font-semibold text-ink-secondary">Move stage</label>
-        <Select
-          onValueChange={(v) => updateStage.mutate({ id: lead.id, stage: v as LeadStage })}
-          value={lead.stage}
-        >
-          <SelectTrigger className="w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {LEAD_STAGES.map((s) => (
-              <SelectItem key={s.value} value={s.value}>
-                {s.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+            <div className="mb-4 flex gap-2">
+              <Textarea
+                className="min-h-0"
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="Add a note…"
+                rows={2}
+                value={note}
+              />
+              <Button
+                className="shrink-0 self-end"
+                disabled={!note.trim() || addNote.isPending}
+                onClick={() => void submitNote()}
+                size="icon"
+                variant="primary"
+              >
+                <Send className="h-4 w-4" />
+              </Button>
+            </div>
 
-      {/* Timeline */}
-      <div className="p-6">
-        <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-secondary">
-          Activity
-        </h3>
-
-        <div className="mb-4 flex gap-2">
-          <Textarea
-            className="min-h-0"
-            onChange={(e) => setNote(e.target.value)}
-            placeholder="Add a note…"
-            rows={2}
-            value={note}
-          />
-          <Button
-            className="shrink-0 self-end"
-            disabled={!note.trim() || addNote.isPending}
-            onClick={() => void submitNote()}
-            size="icon"
-            variant="primary"
-          >
-            <Send className="h-4 w-4" />
-          </Button>
+            <ol className="space-y-3">
+              {(timeline ?? []).map((a) => (
+                <li className="flex gap-3" key={a.id}>
+                  <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-border-strong" />
+                  <div className="min-w-0">
+                    <p className="whitespace-pre-line text-sm text-ink">{a.body}</p>
+                    <p className="text-xs text-ink-muted">{formatDateTime(a.occurred_at)}</p>
+                  </div>
+                </li>
+              ))}
+              {(timeline ?? []).length === 0 && (
+                <li className="text-sm text-ink-muted">No activity yet.</li>
+              )}
+            </ol>
+          </div>
         </div>
 
-        <ol className="space-y-3">
-          {(timeline ?? []).map((a) => (
-            <li className="flex gap-3" key={a.id}>
-              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-border-strong" />
-              <div className="min-w-0">
-                <p className="whitespace-pre-line text-sm text-ink">{a.body}</p>
-                <p className="text-xs text-ink-muted">{formatDateTime(a.occurred_at)}</p>
-              </div>
-            </li>
-          ))}
-          {(timeline ?? []).length === 0 && (
-            <li className="text-sm text-ink-muted">No activity yet.</li>
-          )}
-        </ol>
+        {/* Right / Sidebar column: Move stage, Facts & DangerZone */}
+        <div className="bg-surface-sunken/20 lg:col-span-5">
+          {/* Stage control */}
+          <div className="border-b border-border p-6">
+            <label className="mb-1.5 block text-xs font-semibold text-ink-secondary">
+              Move stage
+            </label>
+            <Select
+              onValueChange={(v) => updateStage.mutate({ id: lead.id, stage: v as LeadStage })}
+              value={lead.stage}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {LEAD_STAGES.map((s) => (
+                  <SelectItem key={s.value} value={s.value}>
+                    {s.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Facts */}
+          <div className="grid grid-cols-2 gap-x-4 gap-y-3 border-b border-border p-6 text-sm">
+            <Fact label="Value">
+              {lead.value_ugx > 0 ? (
+                <Money className="font-semibold text-ink" value={BigInt(lead.value_ugx)} />
+              ) : (
+                <span className="text-ink-muted">—</span>
+              )}
+            </Fact>
+            <Fact label="Owner">
+              {lead.owner?.full_name ?? <span className="text-ink-muted">Unassigned</span>}
+            </Fact>
+            <Fact label="Service">
+              {lead.service_interest ?? <span className="text-ink-muted">—</span>}
+            </Fact>
+            <Fact label="Source">{lead.source ?? <span className="text-ink-muted">—</span>}</Fact>
+            {contact?.phone_e164 && <Fact label="Phone">{formatPhoneDisplay(contact.phone_e164)}</Fact>}
+            {contact?.email && <Fact label="Email">{contact.email}</Fact>}
+            <Fact label="Created">{formatRelative(lead.created_at)}</Fact>
+          </div>
+
+          <DangerZone>
+            <Button onClick={() => setDeleteOpen(true)} size="sm" variant="secondary">
+              <Trash2 className="mr-1 h-3.5 w-3.5 text-danger" />
+              Delete lead
+            </Button>
+            {contact && (
+              <Button onClick={() => setEraseOpen(true)} size="sm" variant="secondary">
+                <UserX className="mr-1 h-3.5 w-3.5 text-danger" />
+                Erase this person
+              </Button>
+            )}
+          </DangerZone>
+        </div>
       </div>
 
-      <DangerZone>
-        <Button onClick={() => setDeleteOpen(true)} size="sm" variant="secondary">
-          <Trash2 className="mr-1 h-3.5 w-3.5 text-danger" />
-          Delete lead
-        </Button>
-        {contact && (
-          <Button onClick={() => setEraseOpen(true)} size="sm" variant="secondary">
-            <UserX className="mr-1 h-3.5 w-3.5 text-danger" />
-            Erase this person
-          </Button>
-        )}
-      </DangerZone>
       <DeleteLeadDialog
         leadId={lead.id}
         onDeleted={onClose}

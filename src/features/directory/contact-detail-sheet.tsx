@@ -30,7 +30,7 @@ export function ContactDetailSheet({
 }) {
   return (
     <Sheet onOpenChange={onOpenChange} open={contactId !== null}>
-      <SheetContent className="w-full overflow-y-auto p-0 sm:max-w-lg" side="right">
+      <SheetContent className="p-0" side="center">
         {contactId && <Body contactId={contactId} onClose={() => onOpenChange(false)} />}
       </SheetContent>
     </Sheet>
@@ -92,9 +92,9 @@ function Body({ contactId, onClose }: { contactId: string; onClose: () => void }
   };
 
   return (
-    <div>
+    <div className="flex max-h-[88vh] flex-col">
       {/* Header */}
-      <div className="border-b border-border bg-surface p-6">
+      <div className="shrink-0 border-b border-border bg-surface p-6 pr-12">
         {editingName ? (
           <div className="flex gap-2">
             <Input
@@ -151,113 +151,122 @@ function Body({ contactId, onClose }: { contactId: string; onClose: () => void }
         </div>
       </div>
 
-      {/* Facts */}
-      <div className="grid grid-cols-2 gap-x-4 gap-y-3 border-b border-border p-6 text-sm">
-        {contact.email && <Fact label="Email">{contact.email}</Fact>}
-        {contact.phone_e164 && <Fact label="Phone">{formatPhoneDisplay(contact.phone_e164)}</Fact>}
-        {contact.location && <Fact label="Location">{contact.location}</Fact>}
-        <Fact label="Source">{contact.source ?? '—'}</Fact>
-        <Fact label="Added">{formatRelative(contact.created_at)}</Fact>
-      </div>
+      {/* 2-Column Body */}
+      <div className="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto lg:grid-cols-12">
+        {/* Left / Main column: Across the business & Activity */}
+        <div className="border-b border-border lg:col-span-7 lg:border-b-0 lg:border-r">
+          {/* Footprint — everything this person is, across the app. */}
+          {footprint && (
+            <div className="space-y-3 border-b border-border p-6">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-secondary">
+                Across the business
+              </h3>
 
-      {/* Footprint — everything this person is, across the app. This is the
-          payoff of one spine: a lead who is also a candidate shows both. */}
-      {footprint && (
-        <div className="space-y-3 border-b border-border p-6">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-secondary">
-            Across the business
-          </h3>
+              {footprint.leads.length === 0 &&
+                footprint.applications.length === 0 &&
+                footprint.documents.length === 0 &&
+                !footprint.candidateId && (
+                  <p className="text-sm text-ink-muted">No linked records yet.</p>
+                )}
 
-          {footprint.leads.length === 0 &&
-            footprint.applications.length === 0 &&
-            footprint.documents.length === 0 &&
-            !footprint.candidateId && (
-              <p className="text-sm text-ink-muted">No linked records yet.</p>
-            )}
+              {footprint.leads.map((l) => (
+                <LinkRow
+                  icon={Target}
+                  key={l.id}
+                  onClick={() => go(`/leads?lead=${l.id}`)}
+                  right={l.value_ugx > 0 ? <Money compact value={BigInt(l.value_ugx)} /> : null}
+                  subtitle={l.service_interest ?? 'Lead'}
+                  title={`Lead · ${l.stage.replace('_', ' ')}`}
+                />
+              ))}
 
-          {footprint.leads.map((l) => (
-            <LinkRow
-              icon={Target}
-              key={l.id}
-              onClick={() => go(`/leads?lead=${l.id}`)}
-              right={l.value_ugx > 0 ? <Money compact value={BigInt(l.value_ugx)} /> : null}
-              subtitle={l.service_interest ?? 'Lead'}
-              title={`Lead · ${l.stage.replace('_', ' ')}`}
-            />
-          ))}
+              {footprint.candidateId && (
+                <LinkRow
+                  icon={UserRound}
+                  onClick={() => go(`/talent?candidate=${footprint.candidateId!}`)}
+                  subtitle={
+                    footprint.applications.length > 0
+                      ? `${footprint.applications.length} application${footprint.applications.length > 1 ? 's' : ''}`
+                      : 'In the talent pool'
+                  }
+                  title="Candidate profile"
+                />
+              )}
 
-          {footprint.candidateId && (
-            <LinkRow
-              icon={UserRound}
-              onClick={() => go(`/talent?candidate=${footprint.candidateId!}`)}
-              subtitle={
-                footprint.applications.length > 0
-                  ? `${footprint.applications.length} application${footprint.applications.length > 1 ? 's' : ''}`
-                  : 'In the talent pool'
-              }
-              title="Candidate profile"
-            />
+              {footprint.documents.map((d) => (
+                <LinkRow
+                  icon={Receipt}
+                  key={d.id}
+                  onClick={() => go(`/finance/${d.id}`)}
+                  right={<Money compact value={BigInt(d.total_ugx)} />}
+                  subtitle={d.status}
+                  title={`${d.type} ${d.number ?? '(draft)'}`}
+                />
+              ))}
+            </div>
           )}
 
-          {footprint.documents.map((d) => (
-            <LinkRow
-              icon={Receipt}
-              key={d.id}
-              onClick={() => go(`/finance/${d.id}`)}
-              right={<Money compact value={BigInt(d.total_ugx)} />}
-              subtitle={d.status}
-              title={`${d.type} ${d.number ?? '(draft)'}`}
-            />
-          ))}
-        </div>
-      )}
+          {/* Timeline */}
+          <div className="p-6">
+            <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-secondary">
+              Activity
+            </h3>
+            <div className="mb-4 flex gap-2">
+              <Textarea
+                className="min-h-0"
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="Add a note…"
+                rows={2}
+                value={note}
+              />
+              <Button
+                className="shrink-0 self-end"
+                disabled={!note.trim() || addNote.isPending}
+                onClick={() => void submitNote()}
+                size="icon"
+                variant="primary"
+              >
+                <Send className="h-4 w-4" />
+              </Button>
+            </div>
 
-      {/* Timeline */}
-      <div className="p-6">
-        <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-secondary">
-          Activity
-        </h3>
-        <div className="mb-4 flex gap-2">
-          <Textarea
-            className="min-h-0"
-            onChange={(e) => setNote(e.target.value)}
-            placeholder="Add a note…"
-            rows={2}
-            value={note}
-          />
-          <Button
-            className="shrink-0 self-end"
-            disabled={!note.trim() || addNote.isPending}
-            onClick={() => void submitNote()}
-            size="icon"
-            variant="primary"
-          >
-            <Send className="h-4 w-4" />
-          </Button>
+            <ol className="space-y-3">
+              {(timeline ?? []).map((a) => (
+                <li className="flex gap-3" key={a.id}>
+                  <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-border-strong" />
+                  <div className="min-w-0">
+                    <p className="whitespace-pre-line text-sm text-ink">{a.body}</p>
+                    <p className="text-xs text-ink-muted">{formatDateTime(a.occurred_at)}</p>
+                  </div>
+                </li>
+              ))}
+              {(timeline ?? []).length === 0 && (
+                <li className="text-sm text-ink-muted">No activity yet.</li>
+              )}
+            </ol>
+          </div>
         </div>
 
-        <ol className="space-y-3">
-          {(timeline ?? []).map((a) => (
-            <li className="flex gap-3" key={a.id}>
-              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-border-strong" />
-              <div className="min-w-0">
-                <p className="whitespace-pre-line text-sm text-ink">{a.body}</p>
-                <p className="text-xs text-ink-muted">{formatDateTime(a.occurred_at)}</p>
-              </div>
-            </li>
-          ))}
-          {(timeline ?? []).length === 0 && (
-            <li className="text-sm text-ink-muted">No activity yet.</li>
-          )}
-        </ol>
+        {/* Right / Sidebar column: Facts & DangerZone */}
+        <div className="bg-surface-sunken/20 lg:col-span-5">
+          {/* Facts */}
+          <div className="grid grid-cols-2 gap-x-4 gap-y-3 p-6 text-sm">
+            {contact.email && <Fact label="Email">{contact.email}</Fact>}
+            {contact.phone_e164 && <Fact label="Phone">{formatPhoneDisplay(contact.phone_e164)}</Fact>}
+            {contact.location && <Fact label="Location">{contact.location}</Fact>}
+            <Fact label="Source">{contact.source ?? '—'}</Fact>
+            <Fact label="Added">{formatRelative(contact.created_at)}</Fact>
+          </div>
+
+          <DangerZone>
+            <Button onClick={() => setEraseOpen(true)} size="sm" variant="secondary">
+              <UserX className="mr-1 h-3.5 w-3.5 text-danger" />
+              Erase this person
+            </Button>
+          </DangerZone>
+        </div>
       </div>
 
-      <DangerZone>
-        <Button onClick={() => setEraseOpen(true)} size="sm" variant="secondary">
-          <UserX className="mr-1 h-3.5 w-3.5 text-danger" />
-          Erase this person
-        </Button>
-      </DangerZone>
       <ErasePersonDialog
         contactId={contact.id}
         onErased={onClose}
