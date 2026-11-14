@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router';
-import { ArrowLeft, FileText, Pencil, X, LayoutGrid, List, Sparkles, Plus, Star } from 'lucide-react';
+import { ArrowLeft, FileText, Pencil, X, LayoutGrid, List, Sparkles, Plus, Star, Scale } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/cn';
 import { PageHeader } from '@/components/page-header';
@@ -20,6 +20,7 @@ import {
   useEvaluateApplication,
 } from './use-recruitment';
 import { ApplicationBoard } from './application-board';
+import { CandidateCompareMatrix } from './candidate-compare-matrix';
 import { CandidateDetailSheet } from './candidate-detail-sheet';
 import { VacancyEditorSheet } from './vacancy-editor-sheet';
 import { MatchBadge } from './match-badge';
@@ -37,12 +38,13 @@ export function VacancyPipelinePage() {
   const { vacancyId } = useParams<{ vacancyId: string }>();
   const navigate = useNavigate();
   const { data: vacancy, isLoading } = useVacancy(vacancyId ?? '');
+  const { data: applications } = useApplications(vacancyId ?? '');
   const { data: poolMatches } = useTalentPoolMatches(vacancyId ?? '');
   const publish = usePublishVacancy(vacancyId ?? '');
   const close = useCloseVacancy(vacancyId ?? '');
   const [editorOpen, setEditorOpen] = useState(false);
   const [openCandidateId, setOpenCandidateId] = useState<string | null>(null);
-  const [view, setView] = useState<'board' | 'table' | 'matches'>('board');
+  const [view, setView] = useState<'board' | 'table' | 'compare' | 'matches'>('board');
   const [sortBy, setSortBy] = useState<'match' | 'newest'>('match');
   const [stageFilter, setStageFilter] = useState<ApplicationStage | 'all'>('all');
   const [searchParams] = useSearchParams();
@@ -177,6 +179,17 @@ export function VacancyPipelinePage() {
           <button
             className={cn(
               'inline-flex items-center gap-1.5 rounded-control px-2.5 py-1 text-sm transition-colors',
+              view === 'compare' ? 'bg-surface-sunken text-ink font-medium' : 'text-ink-secondary',
+            )}
+            onClick={() => setView('compare')}
+            type="button"
+          >
+            <Scale className="h-3.5 w-3.5 text-primary" />
+            Compare (2–3)
+          </button>
+          <button
+            className={cn(
+              'inline-flex items-center gap-1.5 rounded-control px-2.5 py-1 text-sm transition-colors',
               view === 'matches' ? 'bg-surface-sunken text-ink font-medium' : 'text-ink-secondary',
             )}
             onClick={() => setView('matches')}
@@ -193,7 +206,7 @@ export function VacancyPipelinePage() {
         </div>
 
         <div className="ml-auto flex flex-wrap items-center gap-2">
-          {view !== 'matches' && (
+          {(view === 'board' || view === 'table') && (
             <Select onValueChange={(v) => setSortBy(v as 'match' | 'newest')} value={sortBy}>
               <SelectTrigger className="w-[170px]">
                 <SelectValue placeholder="Sort by" />
@@ -238,6 +251,14 @@ export function VacancyPipelinePage() {
           onOpen={openApplication}
           sortBy={sortBy}
           stageFilter={stageFilter}
+          vacancyId={vacancy.id}
+        />
+      )}
+
+      {view === 'compare' && (
+        <CandidateCompareMatrix
+          applications={applications ?? []}
+          vacancy={vacancy}
           vacancyId={vacancy.id}
         />
       )}
