@@ -6,15 +6,19 @@ import { StatusChip } from '@/components/status-chip';
 import { formatRelative } from '@/lib/format';
 import { BOARD_STAGES, stageMeta } from './recruitment-meta';
 import { useApplications, useMoveStage, useVacancy, useUpdateVacancy } from './use-recruitment';
+import { sortApplicationsByMatch } from './ai-matching-schema';
+import { MatchBadge } from './match-badge';
 import type { ApplicationWithRelations } from './recruitment-api';
 import type { ApplicationStage } from '@/types/database';
 
 export function ApplicationBoard({
   vacancyId,
   onOpenApplication,
+  sortBy = 'match',
 }: {
   vacancyId: string;
   onOpenApplication: (id: string) => void;
+  sortBy?: 'match' | 'newest';
 }) {
   const { data: applications, isLoading } = useApplications(vacancyId);
   const moveStage = useMoveStage(vacancyId);
@@ -38,7 +42,11 @@ export function ApplicationBoard({
   }
 
   const rows = applications ?? [];
-  const byStage = (stage: ApplicationStage) => rows.filter((a) => a.stage === stage);
+  const byStage = (stage: ApplicationStage) =>
+    sortApplicationsByMatch(
+      rows.filter((a) => a.stage === stage),
+      sortBy,
+    );
 
   const drop = (stage: ApplicationStage) => {
     if (dragId) {
@@ -154,7 +162,12 @@ export function ApplicationCard({
           {meta.label}
         </StatusChip>
       </div>
-      {headline && <p className="mt-0.5 line-clamp-2 text-xs text-ink-secondary">{headline}</p>}
+      {application.match_tier && (
+        <div className="mt-1.5 flex items-center gap-1.5">
+          <MatchBadge compact score={application.match_score} tier={application.match_tier} />
+        </div>
+      )}
+      {headline && <p className="mt-1 line-clamp-2 text-xs text-ink-secondary">{headline}</p>}
       <p className="mt-2 text-xs text-ink-muted">
         {skills.slice(0, 3).join(' · ')}
         {skills.length > 3 ? ` · +${skills.length - 3}` : ''} · applied{' '}

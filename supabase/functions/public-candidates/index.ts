@@ -494,6 +494,26 @@ Deno.serve(async (req: Request) => {
         ),
       );
     }
+
+    // Background AI CV parsing & role-match evaluation (never blocks or fails intake).
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    if (supabaseUrl && serviceKey && (applicationId || payload.cvPath)) {
+      const evalBody = applicationId
+        ? { action: 'evaluate_application', applicationId, forceReparseCv: Boolean(payload.cvPath) }
+        : { action: 'parse_candidate_cv', candidateId, forceReparseCv: true };
+      background.push(
+        fetch(`${supabaseUrl}/functions/v1/evaluate-candidate`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${serviceKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(evalBody),
+        }).catch((err) => console.warn('evaluate-candidate background trigger failed:', err)),
+      );
+    }
+
     await runAfterResponse(Promise.all(background));
 
     return json({ ok: true }, 200, origin);

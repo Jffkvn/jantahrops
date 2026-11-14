@@ -484,6 +484,7 @@ export type ApplicationStage =
   | 'hired'
   | 'talent_pool';
 export type AvailabilityStatus = 'immediate' | 'one_month' | 'three_months' | 'not_looking';
+export type ApplicationMatchTier = 'strong' | 'adjacent' | 'partial' | 'low' | 'unscored';
 
 export type ScreeningQuestionType = 'text' | 'number' | 'select' | 'boolean';
 
@@ -503,6 +504,7 @@ export type VacancyRow = {
   summary: string | null;
   description: string | null;
   requirements: string | null;
+  recruiter_context: string | null;
   location: string | null;
   employment_type: EmploymentType | null;
   salary_min_ugx: number | null; // whole UGX
@@ -560,11 +562,32 @@ export type ApplicationRow = {
   owner_id: string | null;
   notes: string | null;
   rejected_reason: string | null;
+  match_tier: ApplicationMatchTier | null;
+  match_score: number | null;
+  ai_assessment: unknown;
+  ai_evaluated_at: string | null;
   // Null = arrived from the website and nobody has reviewed it yet.
   reviewed_at: string | null;
   reviewed_by: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type TalentPoolMatchRow = {
+  candidate_id: string;
+  contact_id: string;
+  full_name: string | null;
+  email: string | null;
+  phone_e164: string | null;
+  headline: string | null;
+  skills: string[];
+  years_experience: number | null;
+  salary_expectation_ugx: number | null;
+  availability: AvailabilityStatus | null;
+  rating: number | null;
+  cv_parsed: unknown;
+  matched_skills: string[];
+  relevance_score: number;
 };
 
 export type InterviewRow = {
@@ -818,6 +841,10 @@ export interface Database {
         Args: { p_month: string };
         Returns: ExpenseCategorySummaryResult;
       };
+      match_talent_pool_for_vacancy: {
+        Args: { p_vacancy_id: string; p_limit?: number };
+        Returns: TalentPoolMatchRow[];
+      };
     };
     Enums: {
       user_role: UserRole;
@@ -832,6 +859,7 @@ export interface Database {
       vacancy_status: VacancyStatus;
       employment_type: EmploymentType;
       application_stage: ApplicationStage;
+      application_match_tier: ApplicationMatchTier;
       availability_status: AvailabilityStatus;
       project_stage: ProjectStage;
       milestone_status: MilestoneStatus;

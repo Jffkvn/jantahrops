@@ -418,3 +418,9 @@ verify_jwt = false
 
 [functions.daily-digest]
 verify_jwt = false
+
+[functions.public-candidates]
+verify_jwt = false
+
+[functions.evaluate-candidate]
+verify_jwt = false

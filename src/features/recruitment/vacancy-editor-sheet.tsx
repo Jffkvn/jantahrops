@@ -36,6 +36,7 @@ const schema = z.object({
   summary: z.string(),
   description: z.string(),
   requirements: z.string(),
+  recruiterContext: z.string(),
   location: z.string(),
   employmentType: z.string(),
   salaryMin: z.string(),
@@ -57,6 +58,7 @@ export interface VacancyEditorProps {
     summary: string | null;
     description: string | null;
     requirements: string | null;
+    recruiterContext?: string | null;
     location: string | null;
     employmentType: EmploymentType | null;
     salaryMinUgx: number | null;
@@ -75,6 +77,7 @@ function defaultValues(v: VacancyEditorProps['vacancy']): FormValues {
     summary: v?.summary ?? '',
     description: v?.description ?? '',
     requirements: v?.requirements ?? '',
+    recruiterContext: v?.recruiterContext ?? '',
     location: v?.location ?? '',
     employmentType: v?.employmentType ?? '',
     salaryMin: v?.salaryMinUgx != null ? v.salaryMinUgx.toString() : '',
@@ -163,6 +166,7 @@ export function VacancyEditorSheet({
         summary: values.summary || null,
         description: values.description || null,
         requirements: values.requirements || null,
+        recruiterContext: values.recruiterContext.trim() || null,
         location: values.location || null,
         employmentType: (values.employmentType as EmploymentType) || null,
         salaryMinUgx: values.salaryMin && parseUGX(values.salaryMin) != null ? Number(parseUGX(values.salaryMin)) : null,
@@ -280,6 +284,23 @@ export function VacancyEditorSheet({
               {...register('requirements')}
             />
           </Field>
+
+          <div className="space-y-1.5 rounded-control border border-border bg-surface-sunken/30 p-3.5">
+            <Label className="text-sm font-medium text-ink">
+              Recruiter Context / What Really Matters (Internal Only)
+            </Label>
+            <p className="text-xs text-ink-secondary">
+              Optional. Tell the AI what matters beyond the public JD (e.g. preferred industries,
+              pace, dealbreakers). If left blank, the AI evaluates using Uganda/East Africa industry
+              standards for this role.
+            </p>
+            <Textarea
+              className="mt-1.5 min-h-0 bg-surface"
+              placeholder="e.g. Prefer candidates from fast-paced FMCG, logistics, or telecom environments; hands-on URA EFRIS experience is a big plus."
+              rows={2}
+              {...register('recruiterContext')}
+            />
+          </div>
 
           {/* Screening Questions Builder */}
           <div className="space-y-3 rounded-control border border-border p-3.5 bg-surface-sunken/40">

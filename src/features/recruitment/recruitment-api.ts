@@ -11,8 +11,17 @@ import type {
   VacancyStatus,
   EmploymentType,
   ApplicationStage,
+  ApplicationMatchTier,
   ScreeningQuestionRow,
+  TalentPoolMatchRow,
 } from '@/types/database';
+import {
+  applyHumanAssessmentOverride,
+  applicationAiAssessmentSchema,
+  type ApplicationAiAssessment,
+  type InterviewPrepQuestion,
+  type OverrideAssessmentInput,
+} from './ai-matching-schema';
 
 // --- vacancies --------------------------------------------------------------
 
@@ -95,6 +104,7 @@ export interface CreateVacancyInput {
   summary?: string | null;
   description?: string | null;
   requirements?: string | null;
+  recruiterContext?: string | null;
   location?: string | null;
   employmentType?: EmploymentType | null;
   salaryMinUgx?: number | null;
@@ -130,6 +140,7 @@ export async function createVacancy(input: CreateVacancyInput): Promise<VacancyR
       summary: input.summary ?? null,
       description: input.description ?? null,
       requirements: input.requirements ?? null,
+      recruiter_context: input.recruiterContext ?? null,
       location: input.location ?? null,
       employment_type: input.employmentType ?? null,
       salary_min_ugx: input.salaryMinUgx ?? null,
@@ -149,6 +160,8 @@ export interface UpdateVacancyInput {
   summary?: string | null;
   description?: string | null;
   requirements?: string | null;
+  recruiter_context?: string | null;
+  recruiterContext?: string | null;
   location?: string | null;
   employment_type?: EmploymentType | null;
   employmentType?: EmploymentType | null;
@@ -175,6 +188,8 @@ export async function updateVacancy(id: string, patch: UpdateVacancyInput): Prom
   if (patch.summary !== undefined) dbPatch.summary = patch.summary;
   if (patch.description !== undefined) dbPatch.description = patch.description;
   if (patch.requirements !== undefined) dbPatch.requirements = patch.requirements;
+  if (patch.recruiter_context !== undefined) dbPatch.recruiter_context = patch.recruiter_context;
+  else if (patch.recruiterContext !== undefined) dbPatch.recruiter_context = patch.recruiterContext;
   if (patch.location !== undefined) dbPatch.location = patch.location;
   if (patch.employment_type !== undefined) dbPatch.employment_type = patch.employment_type;
   else if (patch.employmentType !== undefined) dbPatch.employment_type = patch.employmentType;
@@ -365,7 +380,7 @@ export interface ApplicationWithRelations extends ApplicationRow {
 const APPLICATION_SELECT = `
   *,
   vacancy:vacancies!applications_vacancy_id_fkey ( id, title, slug, status ),
-  candidate:candidates!applications_candidate_id_fkey ( id, headline, skills ),
+  candidate:candidates!applications_candidate_id_fkey ( id, headline, skills, rating, years_experience, salary_expectation_ugx, availability ),
   candidateContact:candidates!applications_candidate_id_fkey ( contact:contacts!candidates_contact_id_fkey ( id, full_name, email, phone_e164 ) )
 `;
 
@@ -596,11 +611,12 @@ export interface ApplicationWithCandidate extends ApplicationRow {
   candidateContact: Pick<ContactRow, 'id' | 'full_name' | 'email' | 'phone_e164'> | null;
 }
 
-// Client-facing pack: fetch ONLY what the client may see. `rating` and `notes`
-// are internal assessments — never pull them into a document meant to leave the
-// building, even if the view doesn't render them today.
-const SHORTLIST_SELECT = `
-  *,
+// Client-facing pack: fetch ONLY what the client may see. `rating`, `notes`,
+// `match_tier`, `match_score`, and `ai_assessment` are internal assessments —
+// never pull them into a document meant to leave the building, even if the view
+// doesn't render them today.
+export const SHORTLIST_SELECT = `
+  id, vacancy_id, candidate_id, source, stage, screening_answers, applied_at, owner_id, created_at, updated_at,
   candidate:candidates!applications_candidate_id_fkey ( id, headline, skills, years_experience, salary_expectation_ugx, availability ),
   candidateContact:candidates!applications_candidate_id_fkey ( contact:contacts!candidates_contact_id_fkey ( id, full_name, email, phone_e164 ) )
 `;
@@ -624,11 +640,22 @@ export async function listApplicationsByStage(
 /** Every application a candidate has ever made, with the vacancy they target. */
 export async function listApplicationsByCandidate(
   candidateId: string,
-): Promise<{ id: string; vacancy_id: string; stage: ApplicationStage; vacancy_title: string | null }[]> {
+): Promise<
+  {
+    id: string;
+    vacancy_id: string;
+    stage: ApplicationStage;
+    vacancy_title: string | null;
+    match_tier: ApplicationMatchTier | null;
+    match_score: number | null;
+  }[]
+> {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from('applications')
-    .select('id, vacancy_id, stage, vacancy:vacancies!applications_vacancy_id_fkey ( title )')
+    .select(
+      'id, vacancy_id, stage, match_tier, match_score, vacancy:vacancies!applications_vacancy_id_fkey ( title )',
+    )
     .eq('candidate_id', candidateId)
     .order('applied_at', { ascending: false });
   if (error) throw error;
@@ -637,6 +664,8 @@ export async function listApplicationsByCandidate(
       id: string;
       vacancy_id: string;
       stage: ApplicationStage;
+      match_tier: ApplicationMatchTier | null;
+      match_score: number | null;
       vacancy: { title: string } | null;
     };
     return {
@@ -644,6 +673,172 @@ export async function listApplicationsByCandidate(
       vacancy_id: r.vacancy_id,
       stage: r.stage,
       vacancy_title: r.vacancy?.title ?? null,
+      match_tier: r.match_tier ?? null,
+      match_score: r.match_score ?? null,
     };
   });
+}
+
+// --- AI evaluation, human overrides & Talent Pool matching ------------------
+
+type EvaluateApplicationResponse = {
+  ok?: boolean;
+  error?: string;
+  match_tier?: ApplicationMatchTier;
+  match_score?: number | null;
+  ai_assessment?: ApplicationAiAssessment;
+};
+
+type ParseCandidateCvResponse = {
+  ok?: boolean;
+  error?: string;
+};
+
+function extractFunctionErrorMessage(err: unknown, fallback: string): string {
+  if (err instanceof Error && err.message) return err.message;
+  if (err && typeof err === 'object' && 'message' in err) {
+    const msg = (err as { message?: unknown }).message;
+    if (typeof msg === 'string' && msg) return msg;
+  }
+  return fallback;
+}
+
+export async function evaluateApplicationWithAi(
+  applicationId: string,
+  forceReparseCv = false,
+): Promise<{
+  match_tier: ApplicationMatchTier;
+  match_score: number | null;
+  ai_assessment: ApplicationAiAssessment;
+}> {
+  const supabase = getSupabase();
+  const res = await supabase.functions.invoke<EvaluateApplicationResponse>('evaluate-candidate', {
+    body: { action: 'evaluate_application', applicationId, forceReparseCv },
+  });
+  if (res.error) {
+    throw new Error(extractFunctionErrorMessage(res.error, 'Could not evaluate application.'));
+  }
+  const payload = res.data;
+  if (!payload?.ok || !payload.match_tier || !payload.ai_assessment) {
+    throw new Error(payload?.error || 'AI evaluation did not complete.');
+  }
+  return {
+    match_tier: payload.match_tier,
+    match_score: payload.match_score ?? null,
+    ai_assessment: payload.ai_assessment,
+  };
+}
+
+export async function parseCandidateCvWithAi(
+  candidateId: string,
+  forceReparseCv = true,
+): Promise<void> {
+  const supabase = getSupabase();
+  const res = await supabase.functions.invoke<ParseCandidateCvResponse>('evaluate-candidate', {
+    body: { action: 'parse_candidate_cv', candidateId, forceReparseCv },
+  });
+  if (res.error) {
+    throw new Error(extractFunctionErrorMessage(res.error, 'Could not parse CV.'));
+  }
+  const payload = res.data;
+  if (!payload?.ok) {
+    throw new Error(payload?.error || 'CV parsing did not complete.');
+  }
+}
+
+export async function saveApplicationAssessmentOverride(
+  applicationId: string,
+  input: Omit<OverrideAssessmentInput, 'userId' | 'userName'>,
+): Promise<void> {
+  const supabase = getSupabase();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  let userName: string | null = null;
+  if (user?.id) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('full_name')
+      .eq('id', user.id)
+      .maybeSingle();
+    userName = profile?.full_name ?? user.email ?? null;
+  }
+
+  const overridden = applyHumanAssessmentOverride({
+    ...input,
+    userId: user?.id ?? null,
+    userName,
+  });
+
+  const { error } = await supabase
+    .from('applications')
+    .update({
+      match_tier: overridden.match_tier,
+      match_score: overridden.match_score,
+      ai_assessment: overridden.ai_assessment,
+    })
+    .eq('id', applicationId);
+
+  if (error) throw error;
+
+  await supabase.from('activities').insert({
+    subject_type: 'application',
+    subject_id: applicationId,
+    type: 'note',
+    body: `Adjusted match assessment to ${overridden.match_tier}${
+      overridden.match_score != null ? ` (${overridden.match_score}%)` : ''
+    }.`,
+    user_id: user?.id ?? null,
+  });
+}
+
+export async function updateApplicationInterviewQuestions(
+  applicationId: string,
+  currentAssessment: ApplicationAiAssessment | null,
+  questions: InterviewPrepQuestion[],
+): Promise<void> {
+  const supabase = getSupabase();
+  const base =
+    currentAssessment ??
+    applicationAiAssessmentSchema.parse({
+      version: 1,
+      status: 'needs_manual_read',
+      evaluated_at: new Date().toISOString(),
+      model: 'human',
+    });
+
+  const cleaned = questions
+    .map((q) => ({
+      ...q,
+      topic: q.topic.trim() || 'Follow-up',
+      why_ask: q.why_ask.trim(),
+      question: q.question.trim(),
+    }))
+    .filter((q) => q.question.length > 0);
+
+  const { error } = await supabase
+    .from('applications')
+    .update({
+      ai_assessment: {
+        ...base,
+        interview_questions: cleaned,
+      },
+    })
+    .eq('id', applicationId);
+
+  if (error) throw error;
+}
+
+export async function matchTalentPoolForVacancy(
+  vacancyId: string,
+  limit = 20,
+): Promise<TalentPoolMatchRow[]> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase.rpc('match_talent_pool_for_vacancy', {
+    p_vacancy_id: vacancyId,
+    p_limit: limit,
+  });
+  if (error) throw error;
+  return data ?? [];
 }

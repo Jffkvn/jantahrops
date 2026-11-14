@@ -21,6 +21,11 @@ import {
   listDistinctSkills,
   listApplicationsByStage,
   listApplicationsByCandidate,
+  evaluateApplicationWithAi,
+  parseCandidateCvWithAi,
+  saveApplicationAssessmentOverride,
+  updateApplicationInterviewQuestions,
+  matchTalentPoolForVacancy,
   type ListVacanciesParams,
   type CreateVacancyInput,
   type UpdateVacancyInput,
@@ -28,6 +33,7 @@ import {
   type ScheduleInterviewInput,
   type RecordInterviewFeedbackInput,
 } from './recruitment-api';
+import type { ApplicationAiAssessment, InterviewPrepQuestion, OverrideAssessmentInput } from './ai-matching-schema';
 import type { ApplicationStage, VacancyStatus } from '@/types/database';
 
 const keys = {
@@ -35,6 +41,7 @@ const keys = {
   vacancies: (p: ListVacanciesParams) => ['recruitment', 'vacancies', p] as const,
   vacancy: (id: string) => ['recruitment', 'vacancy', id] as const,
   applications: (vacancyId: string) => ['recruitment', 'applications', vacancyId] as const,
+  talentPoolMatches: (vacancyId: string) => ['recruitment', 'talent-matches', vacancyId] as const,
   timeline: (id: string) => ['recruitment', 'timeline', id] as const,
   candidateTimeline: (id: string) => ['recruitment', 'candidate-timeline', id] as const,
   shortlist: (vacancyId: string, stage: ApplicationStage) =>
@@ -214,10 +221,74 @@ export function useCreateApplication() {
       createApplication(vars.vacancyId, vars.candidateId),
     onSuccess: (_data, vars) => {
       void qc.invalidateQueries({ queryKey: keys.applications(vars.vacancyId) });
+      void qc.invalidateQueries({ queryKey: keys.talentPoolMatches(vars.vacancyId) });
       void qc.invalidateQueries({ queryKey: keys.vacancy(vars.vacancyId) });
       void qc.invalidateQueries({ queryKey: keys.candidatesPrefix });
       void qc.invalidateQueries({ queryKey: keys.candidate(vars.candidateId) });
       void qc.invalidateQueries({ queryKey: keys.candidateApplications(vars.candidateId) });
+    },
+  });
+}
+
+export function useTalentPoolMatches(vacancyId: string, enabled = true) {
+  return useQuery({
+    queryKey: keys.talentPoolMatches(vacancyId),
+    queryFn: () => matchTalentPoolForVacancy(vacancyId, 20),
+    enabled: Boolean(vacancyId) && enabled,
+  });
+}
+
+export function useEvaluateApplication(vacancyId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { applicationId: string; forceReparseCv?: boolean }) =>
+      evaluateApplicationWithAi(vars.applicationId, vars.forceReparseCv),
+    onSuccess: (_data, vars) => {
+      void qc.invalidateQueries({ queryKey: keys.applications(vacancyId) });
+      void qc.invalidateQueries({ queryKey: keys.timeline(vars.applicationId) });
+      void qc.invalidateQueries({ queryKey: keys.candidatesPrefix });
+      void qc.invalidateQueries({ queryKey: ['new-arrivals'] });
+    },
+  });
+}
+
+export function useParseCandidateCv(candidateId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (forceReparseCv?: boolean | void) =>
+      parseCandidateCvWithAi(candidateId, typeof forceReparseCv === 'boolean' ? forceReparseCv : true),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.candidate(candidateId) });
+      void qc.invalidateQueries({ queryKey: keys.candidatesPrefix });
+    },
+  });
+}
+
+export function useSaveAssessmentOverride(vacancyId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: {
+      applicationId: string;
+      override: Omit<OverrideAssessmentInput, 'userId' | 'userName'>;
+    }) => saveApplicationAssessmentOverride(vars.applicationId, vars.override),
+    onSuccess: (_data, vars) => {
+      void qc.invalidateQueries({ queryKey: keys.applications(vacancyId) });
+      void qc.invalidateQueries({ queryKey: keys.timeline(vars.applicationId) });
+      void qc.invalidateQueries({ queryKey: ['new-arrivals'] });
+    },
+  });
+}
+
+export function useUpdateInterviewQuestions(vacancyId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: {
+      applicationId: string;
+      currentAssessment: ApplicationAiAssessment | null;
+      questions: InterviewPrepQuestion[];
+    }) => updateApplicationInterviewQuestions(vars.applicationId, vars.currentAssessment, vars.questions),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.applications(vacancyId) });
     },
   });
 }

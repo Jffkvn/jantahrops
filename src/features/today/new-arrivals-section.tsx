@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router';
 import { Check, ChevronRight, FileUser, Inbox, Target, UserPlus } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { MatchBadge } from '@/features/recruitment/match-badge';
 import { formatRelative } from '@/lib/format';
 import type { Arrival, ArrivalKind } from './new-arrivals-api';
 import { useMarkReviewed, useNewArrivals } from './use-new-arrivals';
@@ -83,6 +84,9 @@ export function NewArrivalsSection({ onOpenLead }: { onOpenLead: (leadId: string
                     <span className="text-ink-muted"> · {formatRelative(a.createdAt)}</span>
                   </span>
                 </span>
+                {a.kind === 'application' && a.matchTier && (
+                  <MatchBadge compact score={a.matchScore} tier={a.matchTier} />
+                )}
                 <ChevronRight className="text-ink-muted h-4 w-4 shrink-0" />
               </button>
               <Button

@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
-import { Phone, Mail, MessageCircle, FileText, ChevronRight, Star, UserX } from 'lucide-react';
+import { Phone, Mail, MessageCircle, FileText, ChevronRight, Star, UserX, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { StatusChip } from '@/components/status-chip';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/cn';
 import { formatDateTime, formatUGX, formatRelative } from '@/lib/format';
+import { parseCvData } from './ai-matching-schema';
+import { MatchBadge } from './match-badge';
 import { cvSignedUrl } from './recruitment-api';
 import { AVAILABILITY_LABELS, stageMeta } from './recruitment-meta';
 import {
@@ -14,6 +16,7 @@ import {
   useCandidateApplications,
   useCandidateTimeline,
   useCreateApplication,
+  useParseCandidateCv,
   useVacanciesList,
   useUpdateCandidate,
 } from './use-recruitment';
@@ -63,6 +66,7 @@ function CandidateDetailBody({
   const { data: vacanciesData } = useVacanciesList({ status: 'open', pageSize: 100 });
   const createApplication = useCreateApplication();
   const updateCandidate = useUpdateCandidate(candidateId);
+  const parseCv = useParseCandidateCv(candidateId);
   const [vacancyId, setVacancyId] = useState('');
   const [eraseOpen, setEraseOpen] = useState(false);
 
@@ -78,11 +82,21 @@ function CandidateDetailBody({
 
   const contact = candidate.contact;
   const openVacancies = vacanciesData?.rows ?? [];
+  const cvParsed = parseCvData(candidate.cv_parsed);
 
   const downloadCv = async () => {
     const url = await cvSignedUrl(candidate.id);
     if (url) window.open(url, '_blank', 'noopener,noreferrer');
     else toast.error('No CV on file for this candidate');
+  };
+
+  const handleParseCv = async () => {
+    try {
+      await parseCv.mutateAsync();
+      toast.success('CV parsed and profile enriched');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to parse CV');
+    }
   };
 
   const addToVacancy = async () => {
@@ -131,16 +145,74 @@ function CandidateDetailBody({
             <FileText className="h-3.5 w-3.5" />
             CV
           </button>
+          {candidate.cv_file_id && (
+            <button
+              className="rounded-control border-border bg-surface text-ink hover:bg-surface-sunken inline-flex items-center gap-1.5 border px-3 py-1.5 text-sm transition-colors disabled:opacity-50"
+              disabled={parseCv.isPending}
+              onClick={() => void handleParseCv()}
+              type="button"
+            >
+              <Sparkles className="text-primary h-3.5 w-3.5" />
+              {parseCv.isPending ? 'Parsing CV…' : cvParsed ? 'Re-parse CV' : 'Parse CV'}
+            </button>
+          )}
         </div>
       </div>
 
       <div className="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto lg:grid-cols-12">
-        {/* Left / Main column: Notes, Applications & Activity */}
+        {/* Left / Main column: Notes, Extracted CV Profile, Applications & Activity */}
         <div className="border-border border-b lg:col-span-7 lg:border-r lg:border-b-0">
           {candidate.notes && (
             <div className="border-border border-b p-6">
               <label className="text-ink-secondary mb-1 block text-xs font-semibold">Notes</label>
               <p className="text-ink text-sm">{candidate.notes}</p>
+            </div>
+          )}
+
+          {cvParsed && (
+            <div className="border-border border-b p-6">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <h3 className="text-ink-secondary flex items-center gap-1.5 text-xs font-semibold tracking-wide uppercase">
+                  <Sparkles className="text-primary h-3.5 w-3.5" />
+                  Extracted CV Summary
+                </h3>
+              </div>
+              {cvParsed.readability === 'unreadable' ? (
+                <p className="text-warning text-xs">
+                  {cvParsed.readability_note ??
+                    'CV file could not be automatically parsed. Open the CV to review manually.'}
+                </p>
+              ) : (
+                <div className="space-y-2.5 text-sm">
+                  {cvParsed.summary && <p className="text-ink">{cvParsed.summary}</p>}
+                  {cvParsed.industries.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="text-ink-muted text-xs">Industries:</span>
+                      {cvParsed.industries.map((ind) => (
+                        <span
+                          className="rounded-pill bg-surface-sunken text-ink-secondary px-2 py-0.5 text-xs"
+                          key={ind}
+                        >
+                          {ind}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {cvParsed.qualifications.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="text-ink-muted text-xs">Qualifications:</span>
+                      {cvParsed.qualifications.map((q) => (
+                        <span
+                          className="rounded-pill bg-primary-subtle text-primary px-2 py-0.5 text-xs font-medium"
+                          key={q}
+                        >
+                          {q}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
@@ -167,6 +239,9 @@ function CandidateDetailBody({
                         {stageMeta(app.stage).label}
                       </p>
                     </div>
+                    {app.match_tier && (
+                      <MatchBadge compact score={app.match_score} tier={app.match_tier} />
+                    )}
                     <ChevronRight className="text-ink-muted h-4 w-4 shrink-0" />
                   </button>
                 </li>

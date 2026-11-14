@@ -1,4 +1,5 @@
 import { getSupabase } from '@/lib/supabase';
+import type { ApplicationMatchTier } from '@/types/database';
 
 /**
  * "New from the website": leads, job applications and talent-pool sign-ups
@@ -18,6 +19,8 @@ export interface Arrival {
   /** Applications: where to open them, and the candidate to mark with them. */
   vacancyId?: string;
   candidateId?: string;
+  matchTier?: ApplicationMatchTier | null;
+  matchScore?: number | null;
 }
 
 const LIMIT = 50;
@@ -41,6 +44,8 @@ interface AppQ {
   created_at: string;
   vacancy_id: string;
   candidate_id: string;
+  match_tier: ApplicationMatchTier | null;
+  match_score: number | null;
   vacancy: { title: string } | null;
   candidate: { contact: { full_name: string } | null } | null;
 }
@@ -66,7 +71,7 @@ export async function getNewArrivals(): Promise<Arrival[]> {
     supabase
       .from('applications')
       .select(
-        `id, created_at, vacancy_id, candidate_id,
+        `id, created_at, vacancy_id, candidate_id, match_tier, match_score,
          vacancy:vacancies!applications_vacancy_id_fkey ( title ),
          candidate:candidates!applications_candidate_id_fkey ( contact:contacts!candidates_contact_id_fkey ( full_name ) )`,
       )
@@ -104,6 +109,8 @@ export async function getNewArrivals(): Promise<Arrival[]> {
       createdAt: a.created_at,
       vacancyId: a.vacancy_id,
       candidateId: a.candidate_id,
+      matchTier: a.match_tier,
+      matchScore: a.match_score,
     })),
     ...((cands.data ?? []) as unknown as CandQ[])
       .filter((c) => !applying.has(c.id))
