@@ -141,12 +141,12 @@ export function CandidateCompareMatrix({
 
   if (sortedApps.length < 2) {
     return (
-      <div className="rounded-card border border-border bg-surface p-6 text-center">
+      <div className="rounded-card border border-border-strong bg-surface p-6 text-center">
         <Scale className="mx-auto h-7 w-7 text-ink-muted" />
-        <h3 className="mt-2 font-display text-base font-semibold text-ink">
+        <h3 className="mt-2 font-display text-lg font-bold text-ink">
           Need at Least 2 Applicants to Compare
         </h3>
-        <p className="mx-auto mt-1 max-w-md text-sm text-ink-secondary">
+        <p className="mx-auto mt-1 max-w-md text-md text-ink-secondary">
           This vacancy currently has {sortedApps.length} applicant
           {sortedApps.length === 1 ? '' : 's'}. Once 2 or more candidates are in the pipeline, you
           can compare them side-by-side here.
@@ -173,7 +173,7 @@ export function CandidateCompareMatrix({
   const primaryCandidateApp = sortedApps.find((a) => a.id === effectiveSlot1Id);
 
   return (
-    <div className="space-y-5 rounded-card border border-border bg-surface p-6">
+    <div className="space-y-6 rounded-card border border-border-strong bg-surface p-6 shadow-2xs">
       {/* Candidate Slot Selectors Row */}
       <div className="flex flex-col gap-4">
         <div
@@ -183,17 +183,17 @@ export function CandidateCompareMatrix({
           )}
         >
           {/* Slot 1 */}
-          <div className="rounded-control border border-border bg-surface-sunken/40 p-4">
-            <div className="mb-2 flex items-center justify-between text-xs font-bold uppercase tracking-wide text-ink-secondary">
+          <div className="rounded-control border border-border-strong bg-primary-soft/60 p-4">
+            <div className="mb-2 flex items-center justify-between text-base font-bold uppercase tracking-wide text-ink">
               <span>Candidate 1 {primaryApplicationId ? '(Current Applicant)' : ''}</span>
             </div>
             {primaryApplicationId ? (
-              <div className="rounded-control border border-border bg-surface px-3.5 py-2.5 text-sm font-semibold text-ink">
+              <div className="rounded-control border border-border-strong bg-surface px-4 py-2.5 text-md font-bold text-ink">
                 {formatCandidateOptionLabel(primaryCandidateApp)}
               </div>
             ) : (
               <Select onValueChange={setSlot1Id} value={effectiveSlot1Id}>
-                <SelectTrigger className="w-full bg-surface text-sm">
+                <SelectTrigger className="h-10 w-full border-border-strong bg-surface text-md font-semibold text-ink">
                   <SelectValue placeholder="Select first candidate to compare…" />
                 </SelectTrigger>
                 <SelectContent>
@@ -208,12 +208,12 @@ export function CandidateCompareMatrix({
           </div>
 
           {/* Slot 2 */}
-          <div className="rounded-control border border-border bg-surface-sunken/40 p-4">
-            <div className="mb-2 flex items-center justify-between text-xs font-bold uppercase tracking-wide text-ink-secondary">
+          <div className="rounded-control border border-border-strong bg-primary-soft/60 p-4">
+            <div className="mb-2 flex items-center justify-between text-base font-bold uppercase tracking-wide text-ink">
               <span>Candidate 2 (Choose who to compare with)</span>
               {effectiveSlot2Id && (
                 <button
-                  className="inline-flex items-center gap-1 text-xs font-medium text-ink-muted hover:text-danger"
+                  className="inline-flex items-center gap-1 text-base font-semibold text-danger hover:underline"
                   onClick={() => {
                     setSlot2Id('');
                     setSlot3Id('');
@@ -221,13 +221,13 @@ export function CandidateCompareMatrix({
                   }}
                   type="button"
                 >
-                  <X className="h-3.5 w-3.5" />
+                  <X className="h-4 w-4" />
                   Clear
                 </button>
               )}
             </div>
             <Select onValueChange={setSlot2Id} value={effectiveSlot2Id}>
-              <SelectTrigger className="w-full bg-surface text-sm">
+              <SelectTrigger className="h-10 w-full border-border-strong bg-surface text-md font-semibold text-ink">
                 <SelectValue placeholder="Select a candidate from this vacancy…" />
               </SelectTrigger>
               <SelectContent>
@@ -244,24 +244,24 @@ export function CandidateCompareMatrix({
 
           {/* Slot 3 (Optional) */}
           {showThirdSlot && sortedApps.length >= 3 && (
-            <div className="rounded-control border border-border bg-surface-sunken/40 p-4">
-              <div className="mb-2 flex items-center justify-between text-xs font-bold uppercase tracking-wide text-ink-secondary">
+            <div className="rounded-control border border-border-strong bg-primary-soft/60 p-4">
+              <div className="mb-2 flex items-center justify-between text-base font-bold uppercase tracking-wide text-ink">
                 <span>Candidate 3</span>
                 <button
                   aria-label="Remove 3rd candidate"
-                  className="inline-flex items-center gap-1 text-xs font-medium text-ink-muted hover:text-danger"
+                  className="inline-flex items-center gap-1 text-base font-semibold text-danger hover:underline"
                   onClick={() => {
                     setSlot3Id('');
                     setShowThirdSlot(false);
                   }}
                   type="button"
                 >
-                  <X className="h-3.5 w-3.5" />
+                  <X className="h-4 w-4" />
                   Remove
                 </button>
               </div>
               <Select onValueChange={setSlot3Id} value={effectiveSlot3Id}>
-                <SelectTrigger className="w-full bg-surface text-sm">
+                <SelectTrigger className="h-10 w-full border-border-strong bg-surface text-md font-semibold text-ink">
                   <SelectValue placeholder="Select a 3rd candidate…" />
                 </SelectTrigger>
                 <SelectContent>
@@ -296,13 +296,13 @@ export function CandidateCompareMatrix({
 
       {/* Empty prompt until HR selects Candidate 2 */}
       {!isReadyToCompare ? (
-        <div className="rounded-control border border-dashed border-border-strong bg-surface-sunken/30 px-6 py-8 text-center">
-          <Scale className="mx-auto h-6 w-6 text-primary" />
-          <p className="mt-2 text-sm font-medium text-ink">
+        <div className="rounded-control border-2 border-dashed border-border-strong bg-surface-sunken/40 px-6 py-8 text-center">
+          <Scale className="mx-auto h-7 w-7 text-primary" />
+          <p className="mt-2 text-md font-bold text-ink">
             Pick a candidate in the <strong>Candidate 2</strong> dropdown above to compare them
             side-by-side.
           </p>
-          <p className="mt-1 text-xs text-ink-secondary">
+          <p className="mt-1 text-base font-medium text-ink-secondary">
             You’ll see their match scores, 4-pillar bars, screening answers, strengths, and gaps
             aligned next to each other.
           </p>
@@ -335,17 +335,17 @@ export function CandidateCompareMatrix({
             return (
               <div
                 className={cn(
-                  'flex flex-col space-y-5 rounded-card border border-border bg-surface p-5',
+                  'flex flex-col space-y-5 rounded-card border-2 border-border-strong bg-surface p-5 shadow-2xs',
                   tierAccent,
                 )}
                 key={app.id}
               >
                 {/* 1. Candidate Profile & Stage Action */}
-                <div className="border-b border-border pb-4">
+                <div className="border-b border-border-strong pb-4">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <button
-                        className="text-left font-display text-xl font-semibold text-ink hover:text-primary hover:underline"
+                        className="text-left font-display text-xl font-bold text-ink hover:text-primary hover:underline"
                         onClick={() =>
                           void navigate(`/recruitment/${vacancyId}/applications/${app.id}`)
                         }
@@ -353,12 +353,12 @@ export function CandidateCompareMatrix({
                       >
                         {contact?.full_name ?? 'Unnamed candidate'}
                       </button>
-                      <p className="mt-1 line-clamp-2 text-sm text-ink-secondary">
+                      <p className="mt-1 line-clamp-2 text-base font-medium text-ink-secondary">
                         {candidate?.headline ?? 'No headline'}
                       </p>
                     </div>
                     {isOverallLeader && (
-                      <span className="inline-flex shrink-0 items-center gap-1 rounded-pill bg-success-soft px-2.5 py-1 text-xs font-semibold text-success-ink">
+                      <span className="inline-flex shrink-0 items-center gap-1 rounded-pill bg-success px-3 py-1 text-xs font-bold text-primary-ink">
                         <Trophy className="h-3.5 w-3.5" />
                         Top Match
                       </span>
@@ -366,25 +366,25 @@ export function CandidateCompareMatrix({
                   </div>
 
                   {/* Metadata pills */}
-                  <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-secondary">
+                  <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-base font-medium text-ink">
                     {parsedNotes.location && (
                       <span className="inline-flex items-center gap-1">
-                        <MapPin className="h-3.5 w-3.5 text-ink-muted" />
+                        <MapPin className="h-4 w-4 text-primary" />
                         {parsedNotes.location}
                       </span>
                     )}
                     {candidate?.years_experience != null && (
-                      <span className="font-semibold text-ink">
-                        {candidate.years_experience} yrs exp
+                      <span className="font-bold text-ink">
+                        · {candidate.years_experience} yrs exp
                       </span>
                     )}
                     {candidate?.salary_expectation_ugx != null &&
                       candidate.salary_expectation_ugx > 0 && (
-                        <span>{formatUGX(BigInt(candidate.salary_expectation_ugx))}</span>
+                        <span>· {formatUGX(BigInt(candidate.salary_expectation_ugx))}</span>
                       )}
                     {candidate?.availability && (
                       <span>
-                        {AVAILABILITY_LABELS[candidate.availability] ?? candidate.availability}
+                        · {AVAILABILITY_LABELS[candidate.availability] ?? candidate.availability}
                       </span>
                     )}
                   </div>
@@ -393,7 +393,7 @@ export function CandidateCompareMatrix({
                   <div className="mt-3.5 flex flex-wrap gap-2">
                     {candidate && (
                       <button
-                        className="inline-flex items-center gap-1.5 rounded-control border border-border bg-surface-sunken/50 px-3 py-1.5 text-xs font-medium text-ink hover:bg-surface-sunken"
+                        className="inline-flex items-center gap-1.5 rounded-control border border-border-strong bg-surface-sunken/70 px-3 py-1.5 text-base font-semibold text-ink hover:bg-primary-soft hover:text-primary"
                         onClick={() =>
                           void cvSignedUrl(candidate.id).then((url) => {
                             if (url) window.open(url, '_blank', 'noopener,noreferrer');
@@ -402,13 +402,13 @@ export function CandidateCompareMatrix({
                         }
                         type="button"
                       >
-                        <FileText className="h-3.5 w-3.5 text-primary" />
+                        <FileText className="h-4 w-4 text-primary" />
                         CV
                       </button>
                     )}
                     {parsedNotes.coverLetterPath && (
                       <button
-                        className="inline-flex items-center gap-1.5 rounded-control border border-border bg-surface-sunken/50 px-3 py-1.5 text-xs font-medium text-ink hover:bg-surface-sunken"
+                        className="inline-flex items-center gap-1.5 rounded-control border border-border-strong bg-surface-sunken/70 px-3 py-1.5 text-base font-semibold text-ink hover:bg-primary-soft hover:text-primary"
                         onClick={() => {
                           if (!parsedNotes.coverLetterPath) return;
                           void candidateStorageSignedUrl(parsedNotes.coverLetterPath).then(
@@ -420,37 +420,37 @@ export function CandidateCompareMatrix({
                         }}
                         type="button"
                       >
-                        <FileText className="h-3.5 w-3.5 text-primary" />
+                        <FileText className="h-4 w-4 text-primary" />
                         Cover Letter
                       </button>
                     )}
                     {parsedNotes.linkedInUrl && (
                       <a
-                        className="inline-flex items-center gap-1.5 rounded-control border border-border bg-surface-sunken/50 px-3 py-1.5 text-xs font-medium text-ink hover:bg-surface-sunken"
+                        className="inline-flex items-center gap-1.5 rounded-control border border-border-strong bg-surface-sunken/70 px-3 py-1.5 text-base font-semibold text-ink hover:bg-primary-soft hover:text-primary"
                         href={parsedNotes.linkedInUrl}
                         rel="noreferrer"
                         target="_blank"
                       >
-                        <ExternalLink className="h-3.5 w-3.5 text-primary" />
+                        <ExternalLink className="h-4 w-4 text-primary" />
                         LinkedIn
                       </a>
                     )}
                     {contact?.phone_e164 && (
                       <>
                         <a
-                          className="inline-flex items-center gap-1.5 rounded-control border border-border bg-surface-sunken/50 px-3 py-1.5 text-xs font-medium text-ink hover:bg-surface-sunken"
+                          className="inline-flex items-center gap-1.5 rounded-control border border-border-strong bg-surface-sunken/70 px-3 py-1.5 text-base font-semibold text-ink hover:bg-primary-soft hover:text-primary"
                           href={`tel:${contact.phone_e164}`}
                         >
-                          <Phone className="h-3.5 w-3.5 text-primary" />
+                          <Phone className="h-4 w-4 text-primary" />
                           Call
                         </a>
                         <a
-                          className="inline-flex items-center gap-1.5 rounded-control border border-border bg-surface-sunken/50 px-3 py-1.5 text-xs font-medium text-ink hover:bg-surface-sunken"
+                          className="inline-flex items-center gap-1.5 rounded-control border border-border-strong bg-surface-sunken/70 px-3 py-1.5 text-base font-semibold text-ink hover:bg-primary-soft hover:text-primary"
                           href={`https://wa.me/${contact.phone_e164.replace('+', '')}`}
                           rel="noreferrer"
                           target="_blank"
                         >
-                          <MessageCircle className="h-3.5 w-3.5 text-primary" />
+                          <MessageCircle className="h-4 w-4 text-primary" />
                           WhatsApp
                         </a>
                       </>
@@ -458,15 +458,15 @@ export function CandidateCompareMatrix({
                   </div>
 
                   {/* Stage Selector right in the column */}
-                  <div className="mt-3.5 flex items-center gap-2">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-ink-secondary">
+                  <div className="mt-4 flex items-center gap-2">
+                    <span className="text-base font-bold uppercase tracking-wide text-ink">
                       Stage:
                     </span>
                     <Select
                       onValueChange={(v) => void handleStageChange(app.id, v)}
                       value={app.stage}
                     >
-                      <SelectTrigger className="h-9 flex-1 text-sm">
+                      <SelectTrigger className="h-9 flex-1 border-border-strong text-base font-semibold text-ink">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -481,18 +481,18 @@ export function CandidateCompareMatrix({
                 </div>
 
                 {/* 2. AI Verdict & Summary */}
-                <div className="rounded-control border border-border bg-surface-sunken/30 p-4">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs font-bold uppercase tracking-wide text-ink-secondary">
+                <div className="overflow-hidden rounded-control border border-border-strong bg-surface">
+                  <div className="flex items-center justify-between gap-2 border-b border-border-strong bg-primary-soft px-4 py-2.5">
+                    <span className="text-base font-bold uppercase tracking-wide text-ink">
                       AI Verdict
                     </span>
                     {app.match_tier ? (
                       <MatchBadge score={app.match_score} tier={app.match_tier} />
                     ) : (
-                      <span className="text-xs text-ink-muted">Not evaluated</span>
+                      <span className="text-sm font-medium text-ink-secondary">Not evaluated</span>
                     )}
                   </div>
-                  <p className="mt-2.5 text-sm leading-relaxed text-ink">
+                  <p className="p-4 text-md font-medium leading-relaxed text-ink">
                     {assessment?.summary ??
                       (app.match_tier
                         ? MATCH_TIER_META[app.match_tier].label
@@ -502,11 +502,11 @@ export function CandidateCompareMatrix({
 
                 {/* 3. 4-Pillar Score Bars */}
                 <div className="space-y-3">
-                  <p className="text-xs font-bold uppercase tracking-wide text-ink-secondary">
+                  <div className="rounded-control bg-primary-soft px-3.5 py-2 text-base font-bold uppercase tracking-wide text-ink">
                     4-Pillar Score Comparison
-                  </p>
+                  </div>
                   {assessment && assessment.status === 'scored' ? (
-                    <>
+                    <div className="space-y-3 px-1">
                       <CompactPillarBar
                         isLeader={
                           maxPillarScores.core > 0 &&
@@ -546,28 +546,30 @@ export function CandidateCompareMatrix({
                         max={assessment.pillars.practical_and_cover_note.max}
                         score={assessment.pillars.practical_and_cover_note.score}
                       />
-                    </>
+                    </div>
                   ) : (
-                    <p className="text-sm text-ink-muted">No pillar scores available.</p>
+                    <p className="text-md font-medium text-ink-secondary">
+                      No pillar scores available.
+                    </p>
                   )}
                 </div>
 
                 {/* 4. Screening Question Answers (Aligned across columns) */}
                 {screeningQuestions.length > 0 && (
-                  <div className="space-y-2.5 border-t border-border pt-4">
-                    <p className="text-xs font-bold uppercase tracking-wide text-ink-secondary">
+                  <div className="space-y-3">
+                    <div className="rounded-control bg-primary-soft px-3.5 py-2 text-base font-bold uppercase tracking-wide text-ink">
                       Screening Answers
-                    </p>
+                    </div>
                     {screeningQuestions.map((q) => {
                       const rawVal = (app.screening_answers ?? {})[q.id];
                       const formatted = formatScreeningValue(rawVal);
                       return (
                         <div
-                          className="rounded-control border border-border bg-surface-sunken/25 p-3"
+                          className="rounded-control border border-border-strong bg-surface-sunken/50 p-3.5"
                           key={q.id}
                         >
-                          <p className="text-xs font-medium text-ink-secondary">{q.question}</p>
-                          <p className="mt-1 text-sm font-semibold text-ink">{formatted}</p>
+                          <p className="text-base font-semibold text-ink-secondary">{q.question}</p>
+                          <p className="mt-1 text-md font-bold text-ink">{formatted}</p>
                         </div>
                       );
                     })}
@@ -575,14 +577,14 @@ export function CandidateCompareMatrix({
                 )}
 
                 {/* 5. Top Skills & Qualifications */}
-                <div className="space-y-2.5 border-t border-border pt-4">
-                  <p className="text-xs font-bold uppercase tracking-wide text-ink-secondary">
+                <div className="space-y-3">
+                  <div className="rounded-control bg-primary-soft px-3.5 py-2 text-base font-bold uppercase tracking-wide text-ink">
                     Skills &amp; Qualifications
-                  </p>
-                  <div className="flex flex-wrap gap-1.5">
+                  </div>
+                  <div className="flex flex-wrap gap-2 px-1">
                     {(parsedCv?.qualifications ?? []).map((qual) => (
                       <span
-                        className="rounded-pill bg-primary-soft px-2.5 py-0.5 text-xs font-medium text-primary"
+                        className="rounded-pill border border-primary/30 bg-primary-soft px-3 py-1 text-base font-bold text-primary"
                         key={qual}
                       >
                         {qual}
@@ -590,7 +592,7 @@ export function CandidateCompareMatrix({
                     ))}
                     {(candidate?.skills ?? []).slice(0, 8).map((skill) => (
                       <span
-                        className="rounded-pill bg-surface-sunken px-2.5 py-0.5 text-xs font-medium text-ink"
+                        className="rounded-pill border border-border-strong bg-surface-sunken px-3 py-1 text-base font-semibold text-ink"
                         key={skill}
                       >
                         {skill}
@@ -598,68 +600,68 @@ export function CandidateCompareMatrix({
                     ))}
                     {(candidate?.skills ?? []).length === 0 &&
                       (parsedCv?.qualifications ?? []).length === 0 && (
-                        <span className="text-sm text-ink-muted">No skills listed</span>
+                        <span className="text-md text-ink-secondary">No skills listed</span>
                       )}
                   </div>
                 </div>
 
                 {/* 6. Key Strengths */}
-                <div className="space-y-2 border-t border-border pt-4">
-                  <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-success-ink">
+                <div className="space-y-2.5">
+                  <div className="flex items-center gap-2 rounded-control bg-success-soft px-3.5 py-2 text-base font-bold uppercase tracking-wide text-success-ink">
                     <CheckCircle2 className="h-4 w-4 text-success" />
                     Key Strengths
-                  </p>
+                  </div>
                   {assessment && assessment.strengths.length > 0 ? (
-                    <ul className="space-y-2 text-sm leading-relaxed text-ink">
+                    <ul className="space-y-2.5 px-1 text-md font-medium leading-relaxed text-ink">
                       {assessment.strengths.map((s, idx) => (
-                        <li className="flex gap-2" key={idx}>
-                          <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-success" />
+                        <li className="flex gap-2.5" key={idx}>
+                          <span className="mt-2 h-2 w-2 shrink-0 rounded-full bg-success" />
                           <span>{s}</span>
                         </li>
                       ))}
                     </ul>
                   ) : (
-                    <p className="text-sm text-ink-muted">—</p>
+                    <p className="px-1 text-md text-ink-secondary">—</p>
                   )}
                 </div>
 
                 {/* 7. Why They Translate (Adjacent Fit) */}
-                <div className="space-y-2 border-t border-border pt-4">
-                  <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-info-ink">
+                <div className="space-y-2.5">
+                  <div className="flex items-center gap-2 rounded-control bg-info-soft px-3.5 py-2 text-base font-bold uppercase tracking-wide text-info-ink">
                     <Compass className="h-4 w-4 text-info" />
                     Why They Translate
-                  </p>
+                  </div>
                   {assessment && assessment.transferable_skills.length > 0 ? (
-                    <ul className="space-y-2 text-sm leading-relaxed text-ink">
+                    <ul className="space-y-2.5 px-1 text-md font-medium leading-relaxed text-ink">
                       {assessment.transferable_skills.map((s, idx) => (
-                        <li className="flex gap-2" key={idx}>
-                          <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-info" />
+                        <li className="flex gap-2.5" key={idx}>
+                          <span className="mt-2 h-2 w-2 shrink-0 rounded-full bg-info" />
                           <span>{s}</span>
                         </li>
                       ))}
                     </ul>
                   ) : (
-                    <p className="text-sm text-ink-muted">—</p>
+                    <p className="px-1 text-md text-ink-secondary">—</p>
                   )}
                 </div>
 
                 {/* 8. Gaps / Risks */}
-                <div className="space-y-2 border-t border-border pt-4">
-                  <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-danger-ink">
+                <div className="space-y-2.5">
+                  <div className="flex items-center gap-2 rounded-control bg-danger-soft px-3.5 py-2 text-base font-bold uppercase tracking-wide text-danger-ink">
                     <AlertTriangle className="h-4 w-4 text-danger" />
                     Gaps / Risks to Verify
-                  </p>
+                  </div>
                   {assessment && assessment.gaps_or_risks.length > 0 ? (
-                    <ul className="space-y-2 text-sm leading-relaxed text-ink">
+                    <ul className="space-y-2.5 px-1 text-md font-medium leading-relaxed text-ink">
                       {assessment.gaps_or_risks.map((s, idx) => (
-                        <li className="flex gap-2" key={idx}>
-                          <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-danger" />
+                        <li className="flex gap-2.5" key={idx}>
+                          <span className="mt-2 h-2 w-2 shrink-0 rounded-full bg-danger" />
                           <span>{s}</span>
                         </li>
                       ))}
                     </ul>
                   ) : (
-                    <p className="text-sm text-ink-muted">—</p>
+                    <p className="px-1 text-md text-ink-secondary">—</p>
                   )}
                 </div>
               </div>
@@ -687,14 +689,14 @@ function CompactPillarBar({
 
   return (
     <div>
-      <div className="flex items-center justify-between text-sm">
-        <span className="font-medium text-ink">{label}</span>
-        <span className="inline-flex items-center gap-1 font-semibold tabular-nums text-ink-secondary">
-          {isLeader && <Trophy className="h-3.5 w-3.5 text-success" />}
+      <div className="flex items-center justify-between text-base">
+        <span className="font-bold text-ink">{label}</span>
+        <span className="inline-flex items-center gap-1 font-bold tabular-nums text-ink">
+          {isLeader && <Trophy className="h-4 w-4 text-success" />}
           {score}/{max} ({pct}%)
         </span>
       </div>
-      <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-surface-sunken">
+      <div className="mt-1.5 h-2.5 w-full overflow-hidden rounded-full bg-surface-sunken">
         <div
           className={cn('h-full rounded-full transition-all', barColor)}
           style={{ width: `${pct}%` }}
