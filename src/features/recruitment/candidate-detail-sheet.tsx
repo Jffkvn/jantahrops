@@ -227,7 +227,7 @@ function CandidateDetailBody({
                   <button
                     className="rounded-control border-border hover:border-border-strong flex w-full items-center gap-3 border px-3 py-2.5 text-left transition-colors"
                     onClick={() =>
-                      void navigate(`/recruitment/${app.vacancy_id}?application=${app.id}`)
+                      void navigate(`/recruitment/${app.vacancy_id}/applications/${app.id}`)
                     }
                     type="button"
                   >

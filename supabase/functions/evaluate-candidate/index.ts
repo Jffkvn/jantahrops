@@ -614,6 +614,31 @@ Return ONLY valid JSON with this exact shape:
   ]
 }`;
 
+  // Check if the application notes reference an uploaded Cover Letter file in the `candidates` bucket.
+  let coverLetterFileBlock: Record<string, unknown> | null = null;
+  let coverLetterExtractedText = '';
+  const coverLetterMatch = String(appRow.notes ?? '').match(
+    /Cover Letter Document Uploaded:\s*(cvs\/[^\s\n\r]+)/i,
+  );
+  if (coverLetterMatch?.[1]) {
+    const clPath = coverLetterMatch[1].trim();
+    const { data: clBlob } = await supabase.storage.from(BUCKET).download(clPath);
+    if (clBlob) {
+      const clBytes = new Uint8Array(await clBlob.arrayBuffer());
+      if (clPath.toLowerCase().endsWith('.pdf') && clBytes.length > 0 && clBytes.length <= 10 * 1024 * 1024) {
+        coverLetterFileBlock = {
+          type: 'file',
+          file: {
+            filename: clPath.split('/').pop() || 'cover-letter.pdf',
+            file_data: `data:application/pdf;base64,${uint8ToBase64(clBytes)}`,
+          },
+        };
+      } else {
+        coverLetterExtractedText = extractReadableTextFromBytes(clBytes);
+      }
+    }
+  }
+
   const evalUserPayload = `=== TARGET VACANCY ===
 Title: ${vacancy.title}
 Client Industry: ${vacancy.organisation?.industry ?? 'Not specified'}
@@ -633,10 +658,16 @@ Years Experience: ${candidateRow.years_experience ?? 'Unknown'}
 Listed Skills: ${JSON.stringify(candidateRow.skills ?? [])}
 Salary Expectation (UGX): ${candidateRow.salary_expectation_ugx ?? 'Not stated'}
 Availability: ${candidateRow.availability ?? 'Not stated'}
-Cover Note / Application Notes: ${appRow.notes ?? 'None provided'}
+Cover Note / Application Notes: ${appRow.notes ?? 'None provided'}${
+    coverLetterExtractedText ? `\nExtracted Cover Letter Text:\n${coverLetterExtractedText}` : ''
+  }
 Screening Question Answers: ${JSON.stringify(appRow.screening_answers ?? {})}
 Parsed CV Data: ${JSON.stringify(cvParsed ?? { note: 'No CV parsed; rely on profile, cover note, and screening answers.' })}
 === </UNTRUSTED_CANDIDATE_DATA> ===`;
+
+  const evalUserContent: unknown = coverLetterFileBlock
+    ? [coverLetterFileBlock, { type: 'text', text: evalUserPayload }]
+    : evalUserPayload;
 
   const activeModel = resolveModel();
   const evalRes = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -651,7 +682,7 @@ Parsed CV Data: ${JSON.stringify(cvParsed ?? { note: 'No CV parsed; rely on prof
       response_format: { type: 'json_object' },
       messages: [
         { role: 'system', content: evalSystemPrompt },
-        { role: 'user', content: evalUserPayload },
+        { role: 'user', content: evalUserContent },
       ],
     }),
   });

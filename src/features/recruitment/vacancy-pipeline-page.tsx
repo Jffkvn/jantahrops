@@ -20,7 +20,6 @@ import {
   useEvaluateApplication,
 } from './use-recruitment';
 import { ApplicationBoard } from './application-board';
-import { ApplicationDetailSheet } from './application-detail-sheet';
 import { CandidateDetailSheet } from './candidate-detail-sheet';
 import { VacancyEditorSheet } from './vacancy-editor-sheet';
 import { MatchBadge } from './match-badge';
@@ -42,23 +41,24 @@ export function VacancyPipelinePage() {
   const publish = usePublishVacancy(vacancyId ?? '');
   const close = useCloseVacancy(vacancyId ?? '');
   const [editorOpen, setEditorOpen] = useState(false);
-  const [openApplicationId, setOpenApplicationId] = useState<string | null>(null);
   const [openCandidateId, setOpenCandidateId] = useState<string | null>(null);
   const [view, setView] = useState<'board' | 'table' | 'matches'>('board');
   const [sortBy, setSortBy] = useState<'match' | 'newest'>('match');
   const [stageFilter, setStageFilter] = useState<ApplicationStage | 'all'>('all');
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
 
-  // Deep-link from ⌘K / Day View signals: ?application=<id> opens the sheet.
+  const openApplication = (appId: string) => {
+    if (!vacancyId) return;
+    void navigate(`/recruitment/${vacancyId}/applications/${appId}`);
+  };
+
+  // Deep-link from ⌘K / Day View / email links: ?application=<id> redirects to full-page review.
   useEffect(() => {
     const appParam = searchParams.get('application');
-    if (appParam) {
-      setOpenApplicationId(appParam);
-      searchParams.delete('application');
-      setSearchParams(searchParams, { replace: true });
+    if (appParam && vacancyId) {
+      void navigate(`/recruitment/${vacancyId}/applications/${appParam}`, { replace: true });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams]);
+  }, [searchParams, vacancyId, navigate]);
 
   if (isLoading) {
     return <div className="p-4 text-sm text-ink-secondary">Loading vacancy…</div>;
@@ -227,7 +227,7 @@ export function VacancyPipelinePage() {
 
       {view === 'board' && (
         <ApplicationBoard
-          onOpenApplication={setOpenApplicationId}
+          onOpenApplication={openApplication}
           sortBy={sortBy}
           vacancyId={vacancy.id}
         />
@@ -235,7 +235,7 @@ export function VacancyPipelinePage() {
 
       {view === 'table' && (
         <ApplicationTable
-          onOpen={setOpenApplicationId}
+          onOpen={openApplication}
           sortBy={sortBy}
           stageFilter={stageFilter}
           vacancyId={vacancy.id}
@@ -244,20 +244,11 @@ export function VacancyPipelinePage() {
 
       {view === 'matches' && (
         <TalentPoolMatchesPanel
-          onOpenApplication={setOpenApplicationId}
+          onOpenApplication={openApplication}
           onOpenCandidate={setOpenCandidateId}
           vacancyId={vacancy.id}
         />
       )}
-
-      <ApplicationDetailSheet
-        applicationId={openApplicationId}
-        onOpenChange={(open) => {
-          if (!open) setOpenApplicationId(null);
-        }}
-        open={openApplicationId != null}
-        vacancyId={vacancy.id}
-      />
 
       <CandidateDetailSheet
         candidateId={openCandidateId}

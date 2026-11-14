@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  MATCH_TIER_META,
   applyHumanAssessmentOverride,
   computeCandidateGapFill,
   parseAiAssessment,
+  parseApplicationNotes,
   parseCvData,
   sortApplicationsByMatch,
   type CvParsedData,
@@ -277,5 +279,34 @@ describe('Shortlist Pack confidentiality guard', () => {
     expect(SHORTLIST_SELECT).not.toContain('ai_evaluated_at');
     expect(SHORTLIST_SELECT).not.toContain('recruiter_context');
     expect(SHORTLIST_SELECT).not.toMatch(/^\s*\*\s*,/m);
+  });
+});
+
+describe('parseApplicationNotes & MATCH_TIER_META colors', () => {
+  it('extracts cover letter PDF path, LinkedIn URL, and Location from website application notes', () => {
+    const raw = `[Cover Letter]
+Cover Letter Document Uploaded: cvs/55966790-ff68-4351-aab0-e4819301ef45-Jkev_Odhis_CoverLetter.pdf
+
+[LinkedIn]
+https://www.linkedin.com/in/jeff-adhaya-b691b935/
+
+[Location]
+Kampala, Uganda`;
+
+    const parsed = parseApplicationNotes(raw);
+    expect(parsed.coverLetterPath).toBe(
+      'cvs/55966790-ff68-4351-aab0-e4819301ef45-Jkev_Odhis_CoverLetter.pdf',
+    );
+    expect(parsed.coverLetterFilename).toBe('Jkev_Odhis_CoverLetter.pdf');
+    expect(parsed.linkedInUrl).toBe('https://www.linkedin.com/in/jeff-adhaya-b691b935/');
+    expect(parsed.location).toBe('Kampala, Uganda');
+    expect(parsed.cleanCoverNote).toBeNull();
+  });
+
+  it('uses distinct semantic colors for Strong, Adjacent, Partial, and Low Fit', () => {
+    expect(MATCH_TIER_META.strong.tone).toBe('success');
+    expect(MATCH_TIER_META.adjacent.tone).toBe('info');
+    expect(MATCH_TIER_META.partial.tone).toBe('warning');
+    expect(MATCH_TIER_META.low.tone).toBe('danger');
   });
 });

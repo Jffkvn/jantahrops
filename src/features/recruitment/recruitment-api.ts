@@ -364,15 +364,32 @@ export async function cvSignedUrl(
   return data?.signedUrl ?? null;
 }
 
+/** Signed URL for an uploaded document path in the private `candidates` bucket (e.g. cover letter PDF). */
+export async function candidateStorageSignedUrl(
+  path: string,
+  expiresInSeconds = 60 * 60,
+): Promise<string | null> {
+  const clean = path.trim();
+  if (!clean) return null;
+  const supabase = getSupabase();
+  const { data } = await supabase.storage
+    .from('candidates')
+    .createSignedUrl(clean, expiresInSeconds);
+  return data?.signedUrl ?? null;
+}
+
 // --- applications -----------------------------------------------------------
 
 export interface ApplicationWithRelations extends ApplicationRow {
   vacancy: Pick<VacancyRow, 'id' | 'title' | 'slug' | 'status'> | null;
   candidate:
-    | Pick<
+    | (Pick<
         CandidateRow,
         'id' | 'headline' | 'skills' | 'rating' | 'years_experience' | 'salary_expectation_ugx' | 'availability'
-      >
+      > & {
+        cv_file_id?: string | null;
+        cv_parsed?: unknown;
+      })
     | null;
   candidateContact: Pick<ContactRow, 'id' | 'full_name' | 'email' | 'phone_e164'> | null;
 }
@@ -380,7 +397,7 @@ export interface ApplicationWithRelations extends ApplicationRow {
 const APPLICATION_SELECT = `
   *,
   vacancy:vacancies!applications_vacancy_id_fkey ( id, title, slug, status ),
-  candidate:candidates!applications_candidate_id_fkey ( id, headline, skills, rating, years_experience, salary_expectation_ugx, availability ),
+  candidate:candidates!applications_candidate_id_fkey ( id, headline, skills, rating, years_experience, salary_expectation_ugx, availability, cv_file_id, cv_parsed ),
   candidateContact:candidates!applications_candidate_id_fkey ( contact:contacts!candidates_contact_id_fkey ( id, full_name, email, phone_e164 ) )
 `;
 

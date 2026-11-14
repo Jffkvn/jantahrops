@@ -94,9 +94,96 @@ export const MATCH_TIER_META: Record<
   strong: { label: 'Strong Fit', shortLabel: 'Strong', tone: 'success', rank: 4 },
   adjacent: { label: 'Adjacent Fit', shortLabel: 'Adjacent', tone: 'info', rank: 3 },
   partial: { label: 'Partial Fit', shortLabel: 'Partial', tone: 'warning', rank: 2 },
-  low: { label: 'Low Fit', shortLabel: 'Low', tone: 'neutral', rank: 1 },
+  low: { label: 'Low Fit', shortLabel: 'Low', tone: 'danger', rank: 1 },
   unscored: { label: 'Needs Manual Read', shortLabel: 'Manual Read', tone: 'neutral', rank: 0 },
 };
+
+export interface ParsedApplicationNotes {
+  coverLetterPath: string | null;
+  coverLetterFilename: string | null;
+  linkedInUrl: string | null;
+  location: string | null;
+  cleanCoverNote: string | null;
+}
+
+/**
+ * Website applications pack structured metadata into `applications.notes`, e.g.:
+ *   [Cover Letter]
+ *   Cover Letter Document Uploaded: cvs/55966790-...-CoverLetter.pdf
+ *   [LinkedIn]
+ *   https://www.linkedin.com/in/...
+ *   [Location]
+ *   Kampala, Uganda
+ *
+ * This helper extracts those fields cleanly so the UI can render clickable
+ * Cover Letter PDF and LinkedIn buttons and only show real prose as the cover note.
+ */
+export function parseApplicationNotes(raw: string | null | undefined): ParsedApplicationNotes {
+  if (!raw || !raw.trim()) {
+    return {
+      coverLetterPath: null,
+      coverLetterFilename: null,
+      linkedInUrl: null,
+      location: null,
+      cleanCoverNote: null,
+    };
+  }
+
+  let working = raw;
+  let coverLetterPath: string | null = null;
+  let coverLetterFilename: string | null = null;
+  let linkedInUrl: string | null = null;
+  let location: string | null = null;
+
+  const fileMatch = working.match(
+    /Cover Letter Document Uploaded:\s*(cvs\/[^\s\n\r]+)/i,
+  );
+  if (fileMatch?.[1]) {
+    coverLetterPath = fileMatch[1].trim();
+    const rawFile = coverLetterPath.split('/').pop() ?? coverLetterPath;
+    // Strip UUID prefix if formatted like `<uuid>-Filename.pdf`
+    coverLetterFilename = rawFile.replace(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-/i,
+      '',
+    );
+    working = working.replace(fileMatch[0], '');
+  }
+
+  const linkedInBlockMatch = working.match(
+    /\[LinkedIn\]\s*\r?\n\s*(https?:\/\/[^\s\n\r]+)/i,
+  );
+  if (linkedInBlockMatch?.[1]) {
+    linkedInUrl = linkedInBlockMatch[1].trim();
+    working = working.replace(linkedInBlockMatch[0], '');
+  } else {
+    const anyLinkedIn = working.match(/https?:\/\/(?:www\.)?linkedin\.com\/[^\s\n\r]+/i);
+    if (anyLinkedIn?.[0]) {
+      linkedInUrl = anyLinkedIn[0].trim();
+    }
+  }
+
+  const locationBlockMatch = working.match(/\[Location\]\s*\r?\n\s*([^\r\n[]+)/i);
+  if (locationBlockMatch?.[1]) {
+    location = locationBlockMatch[1].trim();
+    working = working.replace(locationBlockMatch[0], '');
+  }
+
+  // Strip empty section headers like `[Cover Letter]`, `[LinkedIn]`, `[Location]`
+  working = working
+    .replace(/\[Cover Letter\]\s*/gi, '')
+    .replace(/\[LinkedIn\]\s*/gi, '')
+    .replace(/\[Location\]\s*/gi, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
+  return {
+    coverLetterPath,
+    coverLetterFilename,
+    linkedInUrl,
+    location,
+    cleanCoverNote: working.length > 0 ? working : null,
+  };
+}
 
 export function parseCvData(raw: unknown): CvParsedData | null {
   if (!raw || typeof raw !== 'object') return null;

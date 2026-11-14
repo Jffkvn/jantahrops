@@ -14,6 +14,7 @@ import { ExpensesPage } from '@/features/finance/expenses-page';
 import { PrintView } from '@/features/finance/print-view';
 import { RecruitmentPage } from '@/features/recruitment/recruitment-page';
 import { VacancyPipelinePage } from '@/features/recruitment/vacancy-pipeline-page';
+import { ApplicationReviewPage } from '@/features/recruitment/application-detail-sheet';
 import { TalentPoolPage } from '@/features/recruitment/talent-pool-page';
 import { ShortlistPrintView } from '@/features/recruitment/shortlist-print-view';
 import { ContactsPage } from '@/features/directory/contacts-page';
@@ -77,6 +78,7 @@ export const router = createBrowserRouter([
       { path: 'expenses', element: <ExpensesPage /> },
       { path: 'recruitment', element: <RecruitmentPage /> },
       { path: 'recruitment/:vacancyId', element: <VacancyPipelinePage /> },
+      { path: 'recruitment/:vacancyId/applications/:applicationId', element: <ApplicationReviewPage /> },
       { path: 'talent', element: <TalentPoolPage /> },
       { path: 'tasks', element: <TasksPage /> },
       { path: 'settings', element: <SettingsPage /> },
