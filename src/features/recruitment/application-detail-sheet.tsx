@@ -73,7 +73,7 @@ import {
 /**
  * Full-page Candidate Application Review screen (`/recruitment/:vacancyId/applications/:applicationId`).
  * Features a stationary (sticky) header with quick-jump pills, a continuous "Facts-First" vertical flow,
- * and an integrated 2–3 Candidate Side-by-Side Comparison Matrix.
+ * full-width stacked evidence cards for effortless reading, and an opt-in 2–3 Candidate Comparison Matrix.
  */
 export function ApplicationReviewPage() {
   const { vacancyId, applicationId } = useParams<{
@@ -86,7 +86,7 @@ export function ApplicationReviewPage() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl pb-16">
+    <div className="mx-auto max-w-6xl pb-20">
       <ApplicationDetailWorkspace
         applicationId={applicationId}
         isFullPage
@@ -270,25 +270,66 @@ function ApplicationDetailWorkspace({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* =====================================================================
           STATIONARY (STICKY) HEADER + CANDIDATE BAR + HIGH-CONTRAST JUMP PILLS
          ===================================================================== */}
-      <div className="sticky top-0 z-20 -mx-2 bg-canvas/95 px-2 pt-1 pb-2.5 backdrop-blur-sm">
-        <div className="rounded-card border border-border-strong bg-surface p-4 shadow-sm">
-          {/* Top navigation strip (when full page): Back to vacancy + Compare + Prev/Next */}
-          {isFullPage && (
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-border pb-2.5">
-              <Button
-                onClick={() => void navigate(`/recruitment/${vacancyId}`)}
-                size="sm"
-                type="button"
-                variant="ghost"
-              >
-                <ArrowLeft className="mr-1.5 h-4 w-4" />
-                Back to {vacancy?.title ?? 'vacancy pipeline'}
-              </Button>
+      <div className="sticky top-0 z-20 -mx-2 bg-canvas/95 px-2 pt-1 pb-2 backdrop-blur-sm">
+        <div className="rounded-card border border-border-strong bg-surface px-5 py-3.5 shadow-sm">
+          {/* Row 1 (when full page): Back to vacancy + Candidate Name/Badges + Prev/Next */}
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-2.5">
+            <div className="flex flex-wrap items-center gap-2.5">
+              {isFullPage && (
+                <Button
+                  className="-ml-2"
+                  onClick={() => void navigate(`/recruitment/${vacancyId}`)}
+                  size="sm"
+                  type="button"
+                  variant="ghost"
+                >
+                  <ArrowLeft className="mr-1 h-4 w-4" />
+                  {vacancy?.title ?? 'Pipeline'}
+                </Button>
+              )}
 
+              <span className="hidden text-border-strong sm:inline">|</span>
+
+              <h1 className="font-display text-xl font-bold text-ink">
+                {contact?.full_name ?? 'Unnamed candidate'}
+              </h1>
+              <StatusChip variant={meta.tone}>{meta.label}</StatusChip>
+              {application.match_tier && (
+                <MatchBadge score={application.match_score} tier={application.match_tier} />
+              )}
+
+              {/* Interactive Star Rating */}
+              {candidate && (
+                <span className="inline-flex items-center gap-0.5 pl-1">
+                  {[1, 2, 3, 4, 5].map((n) => (
+                    <button
+                      aria-label={`Rate ${n} out of 5`}
+                      className="p-0.5"
+                      key={n}
+                      onClick={() =>
+                        updateCandidate.mutate({ rating: candidate.rating === n ? null : n })
+                      }
+                      type="button"
+                    >
+                      <Star
+                        className={cn(
+                          'h-4 w-4 transition-colors',
+                          candidate.rating != null && candidate.rating >= n
+                            ? 'fill-current text-warning'
+                            : 'text-ink-muted',
+                        )}
+                      />
+                    </button>
+                  ))}
+                </span>
+              )}
+            </div>
+
+            {isFullPage && (
               <div className="flex flex-wrap items-center gap-2">
                 {ordered.length >= 2 && (
                   <Button
@@ -298,7 +339,7 @@ function ApplicationDetailWorkspace({
                     variant="secondary"
                   >
                     <Scale className="mr-1.5 h-3.5 w-3.5 text-primary" />
-                    Compare candidates ({ordered.length})
+                    Compare
                   </Button>
                 )}
 
@@ -317,7 +358,7 @@ function ApplicationDetailWorkspace({
                       <ChevronLeft className="mr-1 h-4 w-4" />
                       Prev
                     </Button>
-                    <span className="px-1.5 text-xs font-medium tabular-nums text-ink-secondary">
+                    <span className="px-1.5 text-xs font-semibold tabular-nums text-ink-secondary">
                       {currentIndex + 1} / {ordered.length}
                     </span>
                     <Button
@@ -336,143 +377,98 @@ function ApplicationDetailWorkspace({
                   </div>
                 )}
               </div>
-            </div>
-          )}
+            )}
+          </div>
 
-          {/* Main Candidate Bar: Name, Match Badge, Actions, and Stage Selector */}
-          <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-center">
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <h1 className="font-display text-xl font-semibold text-ink">
-                  {contact?.full_name ?? 'Unnamed candidate'}
-                </h1>
-                <StatusChip variant={meta.tone}>{meta.label}</StatusChip>
-                {application.match_tier && (
-                  <MatchBadge score={application.match_score} tier={application.match_tier} />
-                )}
-
-                {/* Interactive Star Rating */}
-                {candidate && (
-                  <span className="inline-flex items-center gap-0.5 pl-1">
-                    {[1, 2, 3, 4, 5].map((n) => (
-                      <button
-                        aria-label={`Rate ${n} out of 5`}
-                        className="p-0.5"
-                        key={n}
-                        onClick={() =>
-                          updateCandidate.mutate({ rating: candidate.rating === n ? null : n })
-                        }
-                        type="button"
-                      >
-                        <Star
-                          className={cn(
-                            'h-3.5 w-3.5 transition-colors',
-                            candidate.rating != null && candidate.rating >= n
-                              ? 'fill-current text-warning'
-                              : 'text-ink-muted',
-                          )}
-                        />
-                      </button>
-                    ))}
-                  </span>
-                )}
-              </div>
-
-              {/* Headline + Quick Metadata */}
-              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-secondary">
-                {candidate?.headline && (
-                  <span className="font-medium text-ink">{candidate.headline}</span>
-                )}
-                {parsedNotes.location && (
-                  <span className="inline-flex items-center gap-1">
-                    <MapPin className="h-3 w-3 text-ink-muted" />
-                    {parsedNotes.location}
-                  </span>
-                )}
-                {candidate?.years_experience != null && (
-                  <span>{candidate.years_experience} yrs exp</span>
-                )}
-                <span className="text-ink-muted">
-                  Applied {formatRelative(application.applied_at)}
-                </span>
-              </div>
-
-              {/* Quick Contact & Document Buttons */}
-              <div className="mt-2.5 flex flex-wrap gap-1.5">
-                {contact?.phone_e164 && (
-                  <>
-                    <QuickAction href={`tel:${contact.phone_e164}`} icon={Phone} label="Call" />
-                    <QuickAction
-                      href={`https://wa.me/${contact.phone_e164.replace('+', '')}`}
-                      icon={MessageCircle}
-                      label="WhatsApp"
-                    />
-                  </>
-                )}
-                {contact?.email && (
-                  <QuickAction href={`mailto:${contact.email}`} icon={Mail} label="Email" />
-                )}
-                {candidate && (
-                  <button
-                    className="inline-flex items-center gap-1.5 rounded-control border border-border bg-surface px-2.5 py-1 text-xs font-medium text-ink transition-colors hover:bg-surface-sunken"
-                    onClick={() => void downloadCv()}
-                    type="button"
-                  >
-                    <FileText className="h-3.5 w-3.5 text-primary" />
-                    CV Document
-                  </button>
-                )}
-                {parsedNotes.coverLetterPath && (
-                  <button
-                    className="inline-flex items-center gap-1.5 rounded-control border border-border bg-surface px-2.5 py-1 text-xs font-medium text-ink transition-colors hover:bg-surface-sunken"
-                    onClick={() => void openCoverLetter()}
-                    type="button"
-                  >
-                    <FileText className="h-3.5 w-3.5 text-primary" />
-                    Cover Letter PDF
-                  </button>
-                )}
-                {parsedNotes.linkedInUrl && (
+          {/* Row 2: Headline & Action Buttons on left + Stage Selector on right */}
+          <div className="mt-2.5 flex flex-col justify-between gap-3 lg:flex-row lg:items-center">
+            <div className="flex flex-wrap items-center gap-2">
+              {contact?.phone_e164 && (
+                <>
+                  <QuickAction href={`tel:${contact.phone_e164}`} icon={Phone} label="Call" />
                   <QuickAction
-                    href={parsedNotes.linkedInUrl}
-                    icon={ExternalLink}
-                    label="LinkedIn"
+                    href={`https://wa.me/${contact.phone_e164.replace('+', '')}`}
+                    icon={MessageCircle}
+                    label="WhatsApp"
                   />
-                )}
-              </div>
+                </>
+              )}
+              {contact?.email && (
+                <QuickAction href={`mailto:${contact.email}`} icon={Mail} label="Email" />
+              )}
+              {candidate && (
+                <button
+                  className="inline-flex items-center gap-1.5 rounded-control border border-border bg-surface px-2.5 py-1 text-xs font-semibold text-ink transition-colors hover:bg-surface-sunken"
+                  onClick={() => void downloadCv()}
+                  type="button"
+                >
+                  <FileText className="h-3.5 w-3.5 text-primary" />
+                  CV Document
+                </button>
+              )}
+              {parsedNotes.coverLetterPath && (
+                <button
+                  className="inline-flex items-center gap-1.5 rounded-control border border-border bg-surface px-2.5 py-1 text-xs font-semibold text-ink transition-colors hover:bg-surface-sunken"
+                  onClick={() => void openCoverLetter()}
+                  type="button"
+                >
+                  <FileText className="h-3.5 w-3.5 text-primary" />
+                  Cover Letter PDF
+                </button>
+              )}
+              {parsedNotes.linkedInUrl && (
+                <QuickAction
+                  href={parsedNotes.linkedInUrl}
+                  icon={ExternalLink}
+                  label="LinkedIn"
+                />
+              )}
+
+              <span className="hidden text-border sm:inline">·</span>
+
+              {candidate?.headline && (
+                <span className="text-xs font-medium text-ink-secondary">{candidate.headline}</span>
+              )}
+              {parsedNotes.location && (
+                <span className="inline-flex items-center gap-1 text-xs text-ink-secondary">
+                  <MapPin className="h-3 w-3 text-ink-muted" />
+                  {parsedNotes.location}
+                </span>
+              )}
+              <span className="text-xs text-ink-muted">
+                Applied {formatRelative(application.applied_at)}
+              </span>
             </div>
 
-            {/* Right side of Stationary Header: Pipeline Stage Control */}
-            <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center lg:w-80 lg:flex-col lg:items-stretch">
-              <div className="flex items-center gap-2">
-                <span className="shrink-0 text-xs font-semibold uppercase tracking-wide text-ink-secondary">
-                  Stage:
-                </span>
-                <Select onValueChange={(v) => void onMove(v)} value={application.stage}>
-                  <SelectTrigger className="h-8 flex-1 bg-surface text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {PIPELINE_STAGES.map((s) => (
-                      <SelectItem key={s.value} value={s.value}>
-                        {s.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+            {/* Stage Selector + Reject Reason inline */}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-bold uppercase tracking-wide text-ink-secondary">
+                Stage:
+              </span>
+              <Select onValueChange={(v) => void onMove(v)} value={application.stage}>
+                <SelectTrigger className="h-8 w-36 bg-surface text-xs font-medium">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PIPELINE_STAGES.map((s) => (
+                    <SelectItem key={s.value} value={s.value}>
+                      {s.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <Input
-                className="h-7 bg-surface text-xs"
+                className="h-8 w-52 bg-surface text-xs"
                 onChange={(e) => setRejectReason(e.target.value)}
-                placeholder="Rejection reason (required if rejecting)"
+                placeholder="Rejection reason (if rejecting)"
                 value={rejectReason}
               />
             </div>
           </div>
 
-          {/* High-Contrast Section Jump Bar */}
-          <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-border pt-2.5">
-            <span className="mr-1 text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
+          {/* Row 3: High-Contrast Section Jump Bar */}
+          <div className="mt-2.5 flex flex-wrap items-center gap-1.5 border-t border-border pt-2.5">
+            <span className="mr-1 text-[11px] font-bold uppercase tracking-wide text-ink-secondary">
               Jump to:
             </span>
             <JumpPill
@@ -506,7 +502,6 @@ function ApplicationDetailWorkspace({
             {ordered.length >= 2 && (
               <JumpPill
                 active={activeSection === 'section-compare'}
-                badge={`${ordered.length}`}
                 label="5. Compare Candidates"
                 onClick={() => jumpToSection('section-compare')}
               />
@@ -534,7 +529,7 @@ function ApplicationDetailWorkspace({
       {/* =====================================================================
           SECTION 1: APPLICATION, SCREENING ANSWERS & CV HIGHLIGHTS (FIRST!)
          ===================================================================== */}
-      <section className="scroll-mt-52 space-y-4" id="section-screening-cv">
+      <section className="scroll-mt-60 space-y-4" id="section-screening-cv">
         <SectionHeading
           number="1"
           subtitle="What the candidate submitted: knockout screening answers, uploaded cover letter, and extracted CV profile."
@@ -546,20 +541,20 @@ function ApplicationDetailWorkspace({
           <div className="space-y-5 lg:col-span-7">
             <div className="rounded-card border border-border bg-surface p-6">
               <div className="mb-4 flex items-center justify-between">
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-secondary">
+                <h3 className="text-sm font-bold uppercase tracking-wide text-ink">
                   Screening Question Responses
                 </h3>
-                <span className="rounded-pill bg-primary-soft px-2.5 py-0.5 text-xs font-semibold text-primary">
+                <span className="rounded-pill bg-primary-soft px-3 py-0.5 text-xs font-semibold text-primary">
                   {screeningEntries.length} answered
                 </span>
               </div>
 
               {screeningEntries.length === 0 ? (
-                <p className="text-sm text-ink-muted">
+                <p className="text-sm text-ink-secondary">
                   No screening questions were answered on this application.
                 </p>
               ) : (
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
                   {screeningEntries.map(([key, val]) => {
                     const matchedQ = (vacancy?.screening_questions ?? []).find(
                       (q) => q.id === key,
@@ -569,11 +564,11 @@ function ApplicationDetailWorkspace({
 
                     return (
                       <div
-                        className="rounded-control border border-border bg-surface-sunken/30 p-3.5"
+                        className="rounded-control border border-border bg-surface-sunken/30 p-4"
                         key={key}
                       >
-                        <p className="text-xs font-medium text-ink-secondary">{prompt}</p>
-                        <p className="mt-1 text-sm font-semibold text-ink">{answerText}</p>
+                        <p className="text-sm font-medium text-ink-secondary">{prompt}</p>
+                        <p className="mt-1.5 text-base font-semibold text-ink">{answerText}</p>
                       </div>
                     );
                   })}
@@ -583,18 +578,18 @@ function ApplicationDetailWorkspace({
 
             {/* Cover Letter & Application Documents */}
             <div className="rounded-card border border-border bg-surface p-6">
-              <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-secondary">
+              <h3 className="mb-3.5 text-sm font-bold uppercase tracking-wide text-ink">
                 Cover Letter &amp; Submitted Documents
               </h3>
 
               <div className="flex flex-wrap gap-3">
                 {candidate && (
-                  <div className="flex flex-1 items-center justify-between gap-3 rounded-control border border-border bg-surface-sunken/40 p-3.5">
-                    <div className="flex min-w-0 items-center gap-2.5">
+                  <div className="flex flex-1 items-center justify-between gap-3 rounded-control border border-border bg-surface-sunken/40 p-4">
+                    <div className="flex min-w-0 items-center gap-3">
                       <FileText className="h-5 w-5 shrink-0 text-primary" />
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-ink">Candidate CV</p>
-                        <p className="text-xs text-ink-muted">Uploaded resume document</p>
+                        <p className="truncate text-sm font-semibold text-ink">Candidate CV</p>
+                        <p className="text-xs text-ink-secondary">Uploaded resume document</p>
                       </div>
                     </div>
                     <Button onClick={() => void downloadCv()} size="sm" variant="secondary">
@@ -604,14 +599,14 @@ function ApplicationDetailWorkspace({
                 )}
 
                 {parsedNotes.coverLetterPath && (
-                  <div className="flex flex-1 items-center justify-between gap-3 rounded-control border border-border bg-surface-sunken/40 p-3.5">
-                    <div className="flex min-w-0 items-center gap-2.5">
+                  <div className="flex flex-1 items-center justify-between gap-3 rounded-control border border-border bg-surface-sunken/40 p-4">
+                    <div className="flex min-w-0 items-center gap-3">
                       <FileText className="h-5 w-5 shrink-0 text-primary" />
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-ink">
+                        <p className="truncate text-sm font-semibold text-ink">
                           {parsedNotes.coverLetterFilename ?? 'Cover Letter PDF'}
                         </p>
-                        <p className="text-xs text-ink-muted">Uploaded cover letter document</p>
+                        <p className="text-xs text-ink-secondary">Uploaded cover letter document</p>
                       </div>
                     </div>
                     <Button onClick={() => void openCoverLetter()} size="sm" variant="secondary">
@@ -622,30 +617,32 @@ function ApplicationDetailWorkspace({
               </div>
 
               {parsedNotes.cleanCoverNote ? (
-                <div className="mt-3 rounded-control border border-border bg-surface-sunken/20 p-3.5">
-                  <p className="mb-1 text-xs font-semibold text-ink-secondary">Written Cover Note</p>
-                  <p className="whitespace-pre-line text-sm text-ink">
+                <div className="mt-4 rounded-control border border-border bg-surface-sunken/20 p-4">
+                  <p className="mb-1.5 text-xs font-bold uppercase tracking-wide text-ink-secondary">
+                    Written Cover Note
+                  </p>
+                  <p className="whitespace-pre-line text-sm leading-relaxed text-ink">
                     {parsedNotes.cleanCoverNote}
                   </p>
                 </div>
               ) : !parsedNotes.coverLetterPath ? (
-                <p className="mt-3 text-sm text-ink-muted">No written cover note provided.</p>
+                <p className="mt-3 text-sm text-ink-secondary">No written cover note provided.</p>
               ) : null}
             </div>
           </div>
 
           {/* Right 5 cols: Extracted CV Profile & Candidate Skills */}
           <div className="space-y-5 lg:col-span-5">
-            <div className="rounded-card border border-border bg-surface p-6 space-y-4">
-              <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-ink-secondary">
-                <Sparkles className="h-3.5 w-3.5 text-primary" />
+            <div className="rounded-card border border-border bg-surface p-6 space-y-5">
+              <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-ink">
+                <Sparkles className="h-4 w-4 text-primary" />
                 CV Highlights &amp; Practical Facts
               </h3>
 
               {/* Practical Facts Grid */}
-              <div className="grid grid-cols-2 gap-3 rounded-control border border-border bg-surface-sunken/30 p-3.5 text-xs">
+              <div className="grid grid-cols-2 gap-3.5 rounded-control border border-border bg-surface-sunken/30 p-4 text-sm">
                 <div>
-                  <span className="text-ink-muted">Experience</span>
+                  <span className="text-xs font-medium text-ink-secondary">Experience</span>
                   <p className="mt-0.5 font-semibold text-ink">
                     {candidate?.years_experience != null
                       ? `${candidate.years_experience} years`
@@ -653,13 +650,13 @@ function ApplicationDetailWorkspace({
                   </p>
                 </div>
                 <div>
-                  <span className="text-ink-muted">Location</span>
+                  <span className="text-xs font-medium text-ink-secondary">Location</span>
                   <p className="mt-0.5 font-semibold text-ink">
                     {parsedNotes.location ?? 'Not stated'}
                   </p>
                 </div>
                 <div>
-                  <span className="text-ink-muted">Salary Expectation</span>
+                  <span className="text-xs font-medium text-ink-secondary">Salary Expectation</span>
                   <p className="mt-0.5 font-semibold text-ink">
                     {candidate?.salary_expectation_ugx != null &&
                     candidate.salary_expectation_ugx > 0
@@ -668,7 +665,7 @@ function ApplicationDetailWorkspace({
                   </p>
                 </div>
                 <div>
-                  <span className="text-ink-muted">Availability</span>
+                  <span className="text-xs font-medium text-ink-secondary">Availability</span>
                   <p className="mt-0.5 font-semibold text-ink">
                     {candidate?.availability
                       ? (AVAILABILITY_LABELS[candidate.availability] ?? candidate.availability)
@@ -679,7 +676,7 @@ function ApplicationDetailWorkspace({
 
               {parsedCv && parsedCv.readability !== 'unreadable' && parsedCv.summary && (
                 <div>
-                  <p className="mb-1 text-xs font-semibold text-ink-secondary">
+                  <p className="mb-1.5 text-xs font-bold uppercase tracking-wide text-ink-secondary">
                     Extracted CV Summary
                   </p>
                   <p className="text-sm leading-relaxed text-ink">{parsedCv.summary}</p>
@@ -688,13 +685,13 @@ function ApplicationDetailWorkspace({
 
               {parsedCv && parsedCv.qualifications.length > 0 && (
                 <div>
-                  <p className="mb-1.5 text-xs font-semibold text-ink-secondary">
+                  <p className="mb-2 text-xs font-bold uppercase tracking-wide text-ink-secondary">
                     Qualifications &amp; Certifications
                   </p>
                   <div className="flex flex-wrap gap-1.5">
                     {parsedCv.qualifications.map((q) => (
                       <span
-                        className="rounded-pill bg-primary-soft px-2.5 py-0.5 text-xs font-medium text-primary"
+                        className="rounded-pill bg-primary-soft px-3 py-1 text-xs font-semibold text-primary"
                         key={q}
                       >
                         {q}
@@ -706,13 +703,13 @@ function ApplicationDetailWorkspace({
 
               {parsedCv && parsedCv.industries.length > 0 && (
                 <div>
-                  <p className="mb-1.5 text-xs font-semibold text-ink-secondary">
+                  <p className="mb-2 text-xs font-bold uppercase tracking-wide text-ink-secondary">
                     Industries Worked In
                   </p>
                   <div className="flex flex-wrap gap-1.5">
                     {parsedCv.industries.map((ind) => (
                       <span
-                        className="rounded-pill bg-surface-sunken px-2.5 py-0.5 text-xs text-ink-secondary"
+                        className="rounded-pill bg-surface-sunken px-3 py-1 text-xs font-medium text-ink"
                         key={ind}
                       >
                         {ind}
@@ -724,13 +721,13 @@ function ApplicationDetailWorkspace({
 
               {candidate && candidate.skills.length > 0 && (
                 <div>
-                  <p className="mb-1.5 text-xs font-semibold text-ink-secondary">
+                  <p className="mb-2 text-xs font-bold uppercase tracking-wide text-ink-secondary">
                     Skills ({candidate.skills.length})
                   </p>
                   <div className="flex flex-wrap gap-1.5">
                     {candidate.skills.map((s) => (
                       <span
-                        className="rounded-pill bg-surface-sunken px-2.5 py-1 text-xs font-medium text-ink"
+                        className="rounded-pill bg-surface-sunken px-3 py-1 text-xs font-medium text-ink"
                         key={s}
                       >
                         {s}
@@ -747,10 +744,10 @@ function ApplicationDetailWorkspace({
       {/* =====================================================================
           SECTION 2: DEEP AI MATCH BREAKDOWN & TRANSFERABLE EVIDENCE
          ===================================================================== */}
-      <section className="scroll-mt-52 space-y-4" id="section-ai-match">
+      <section className="scroll-mt-60 space-y-4" id="section-ai-match">
         <SectionHeading
           number="2"
-          subtitle="4-pillar scoring breakdown and evidence for direct role strengths, transferable adjacent skills, and gaps to verify."
+          subtitle="4-pillar scoring breakdown and full-width evidence cards for direct strengths, transferable adjacent fit, and gaps to verify."
           title="AI Match Breakdown & Transferable Evidence"
         />
 
@@ -764,7 +761,7 @@ function ApplicationDetailWorkspace({
       {/* =====================================================================
           SECTION 3: INTERVIEW PREP & SCHEDULING
          ===================================================================== */}
-      <section className="scroll-mt-52 space-y-4" id="section-interview-prep">
+      <section className="scroll-mt-60 space-y-4" id="section-interview-prep">
         <SectionHeading
           number="3"
           subtitle="Tailored questions to probe missing details or verify claims during the interview, plus interview scheduling."
@@ -791,29 +788,29 @@ function ApplicationDetailWorkspace({
 
           <div className="lg:col-span-5">
             <div className="rounded-card border border-border bg-surface p-6">
-              <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-secondary">
+              <h3 className="mb-3.5 text-sm font-bold uppercase tracking-wide text-ink">
                 Scheduled Interviews &amp; Feedback
               </h3>
 
               <div className="space-y-3">
                 {(interviews ?? []).map((interview) => (
                   <div
-                    className="rounded-control border border-border bg-surface-sunken/30 p-3.5"
+                    className="rounded-control border border-border bg-surface-sunken/30 p-4"
                     key={interview.id}
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <span className="inline-flex items-center gap-1.5 text-sm font-medium text-ink">
-                        <Calendar className="h-3.5 w-3.5 text-primary" />
+                      <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-ink">
+                        <Calendar className="h-4 w-4 text-primary" />
                         {interview.scheduled_at
                           ? formatDateTime(interview.scheduled_at)
                           : 'No time set'}
                       </span>
-                      <span className="rounded-pill bg-surface px-2 py-0.5 text-xs text-ink-secondary">
+                      <span className="rounded-pill bg-surface px-2.5 py-0.5 text-xs font-medium text-ink-secondary">
                         {interview.mode ?? 'In person'}
                       </span>
                     </div>
                     {interview.outcome && (
-                      <p className="mt-1.5 text-xs font-medium text-ink-secondary">
+                      <p className="mt-1.5 text-xs font-semibold text-ink-secondary">
                         Outcome: {interview.outcome}
                       </p>
                     )}
@@ -832,12 +829,12 @@ function ApplicationDetailWorkspace({
                   </div>
                 ))}
                 {(interviews ?? []).length === 0 && (
-                  <p className="text-sm text-ink-muted">No interviews scheduled yet.</p>
+                  <p className="text-sm text-ink-secondary">No interviews scheduled yet.</p>
                 )}
               </div>
 
               <div className="mt-5 border-t border-border pt-4">
-                <h4 className="mb-2.5 text-xs font-semibold uppercase tracking-wide text-ink-secondary">
+                <h4 className="mb-3 text-xs font-bold uppercase tracking-wide text-ink-secondary">
                   Schedule a New Interview
                 </h4>
                 <div className="grid grid-cols-1 gap-3">
@@ -883,7 +880,7 @@ function ApplicationDetailWorkspace({
       {/* =====================================================================
           SECTION 4: TEAM NOTES & ACTIVITY LOG
          ===================================================================== */}
-      <section className="scroll-mt-52 space-y-4" id="section-notes">
+      <section className="scroll-mt-60 space-y-4" id="section-notes">
         <SectionHeading
           number="4"
           subtitle="Internal team comments and stage movement history for this applicant."
@@ -893,7 +890,7 @@ function ApplicationDetailWorkspace({
         <div className="rounded-card border border-border bg-surface p-6">
           <div className="mb-5 flex gap-2">
             <Textarea
-              className="min-h-0"
+              className="min-h-0 text-sm"
               onChange={(e) => setNote(e.target.value)}
               placeholder="Add an internal recruiter note on this application…"
               rows={2}
@@ -921,7 +918,7 @@ function ApplicationDetailWorkspace({
               </li>
             ))}
             {(timeline ?? []).length === 0 && (
-              <li className="text-sm text-ink-muted">No activity recorded yet.</li>
+              <li className="text-sm text-ink-secondary">No activity recorded yet.</li>
             )}
           </ol>
         </div>
@@ -931,10 +928,10 @@ function ApplicationDetailWorkspace({
           SECTION 5: SIDE-BY-SIDE CANDIDATE COMPARISON (2–3 APPLICANTS)
          ===================================================================== */}
       {ordered.length >= 2 && (
-        <section className="scroll-mt-52 space-y-4" id="section-compare">
+        <section className="scroll-mt-60 space-y-4" id="section-compare">
           <SectionHeading
             number="5"
-            subtitle="See how this applicant stacks up side-by-side against 1 or 2 other contenders on this vacancy."
+            subtitle="Pick 1 or 2 other applicants from this vacancy to compare side-by-side against this candidate."
             title="Compare Candidates Side-by-Side"
           />
 
@@ -950,6 +947,10 @@ function ApplicationDetailWorkspace({
   );
 }
 
+/**
+ * Bold, unmistakable Section Header Bar so every major section on the page
+ * stands out clearly while scrolling.
+ */
 function SectionHeading({
   number,
   title,
@@ -960,13 +961,13 @@ function SectionHeading({
   subtitle: string;
 }) {
   return (
-    <div className="flex items-start gap-3 border-b border-border pb-2.5">
-      <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-ink">
+    <div className="flex items-center gap-3.5 rounded-card border border-border-strong border-l-4 border-l-primary bg-surface px-5 py-3.5 shadow-2xs">
+      <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-ink">
         {number}
       </span>
-      <div>
-        <h2 className="font-display text-base font-semibold text-ink">{title}</h2>
-        <p className="text-xs text-ink-secondary">{subtitle}</p>
+      <div className="min-w-0">
+        <h2 className="font-display text-lg font-bold text-ink">{title}</h2>
+        <p className="text-sm text-ink-secondary">{subtitle}</p>
       </div>
     </div>
   );
@@ -986,7 +987,7 @@ function JumpPill({
   return (
     <button
       className={cn(
-        'inline-flex items-center gap-1.5 rounded-pill border px-3 py-1 text-xs font-semibold transition-colors',
+        'inline-flex items-center gap-1.5 rounded-pill border px-3.5 py-1 text-xs font-semibold transition-colors',
         active
           ? 'border-primary bg-primary text-primary-ink shadow-xs'
           : 'border-border-strong bg-surface-sunken/70 text-ink hover:border-primary hover:bg-primary-soft hover:text-primary',
@@ -998,7 +999,7 @@ function JumpPill({
       {badge && (
         <span
           className={cn(
-            'rounded-pill px-1.5 py-0.2 text-[10px] font-bold tabular-nums',
+            'rounded-pill px-1.5 py-0.2 text-[11px] font-bold tabular-nums',
             active ? 'bg-surface/20 text-primary-ink' : 'bg-surface text-ink-secondary',
           )}
         >
@@ -1137,13 +1138,13 @@ function VerdictBanner({
 
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-ink-secondary">
+              <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-ink-secondary">
                 <Sparkles className="h-3.5 w-3.5 text-primary" />
                 Executive AI Verdict
               </span>
               {matchTier && <MatchBadge score={matchScore} tier={matchTier} />}
               {assessment?.overridden_by_name && (
-                <span className="rounded-pill bg-surface px-2 py-0.5 text-[11px] font-medium text-primary">
+                <span className="rounded-pill bg-surface px-2 py-0.5 text-xs font-medium text-primary">
                   Adjusted by {assessment.overridden_by_name}
                 </span>
               )}
@@ -1159,9 +1160,9 @@ function VerdictBanner({
             </div>
 
             {assessment?.summary ? (
-              <p className="mt-1.5 text-sm leading-relaxed text-ink">{assessment.summary}</p>
+              <p className="mt-2 text-base leading-relaxed text-ink">{assessment.summary}</p>
             ) : (
-              <p className="mt-1.5 text-sm text-ink-secondary">
+              <p className="mt-2 text-sm text-ink-secondary">
                 Not evaluated yet. Click <strong>Evaluate with AI</strong> to score this candidate’s
                 CV, cover letter, and screening answers against the job description.
               </p>
@@ -1300,7 +1301,7 @@ function MatchBreakdownSection({
         <h3 className="mt-2 font-display text-base font-semibold text-ink">
           No AI Match Breakdown Yet
         </h3>
-        <p className="mx-auto mt-1 max-w-md text-xs text-ink-secondary">
+        <p className="mx-auto mt-1 max-w-md text-sm text-ink-secondary">
           Run the AI evaluator to see the 4-pillar score breakdown, transferable skill analysis,
           and tailored interview questions for this applicant.
         </p>
@@ -1319,7 +1320,8 @@ function MatchBreakdownSection({
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
+      {/* 4-Pillar Score Cards */}
       {assessment.status === 'scored' && (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <PillarCard
@@ -1349,64 +1351,77 @@ function MatchBreakdownSection({
         </div>
       )}
 
-      {/* 3 Side-by-Side Color-Accented Evidence Cards */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <div className="rounded-card border border-border border-t-4 border-t-success bg-surface p-5">
-          <div className="mb-3 flex items-center gap-2">
-            <CheckCircle2 className="h-4 w-4 text-success" />
-            <h4 className="text-sm font-semibold text-ink">Strengths &amp; Evidence</h4>
+      {/* Full-Width Stacked Evidence Cards (One Per Row for Effortless Reading) */}
+      <div className="space-y-4">
+        {/* 1. Strengths & Evidence */}
+        <div className="rounded-card border border-border border-l-4 border-l-success bg-surface p-6">
+          <div className="mb-3 flex items-center gap-2.5">
+            <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-success-soft text-success-ink">
+              <CheckCircle2 className="h-4 w-4" />
+            </span>
+            <h4 className="font-display text-base font-bold text-ink">
+              Strengths &amp; Direct Evidence
+            </h4>
           </div>
           {assessment.strengths.length > 0 ? (
-            <ul className="space-y-2 text-xs leading-relaxed text-ink">
+            <ul className="max-w-4xl space-y-2.5 text-sm leading-relaxed text-ink">
               {assessment.strengths.map((s, idx) => (
-                <li className="flex gap-2" key={idx}>
-                  <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-success" />
+                <li className="flex gap-2.5" key={idx}>
+                  <span className="mt-2 h-2 w-2 shrink-0 rounded-full bg-success" />
                   <span>{s}</span>
                 </li>
               ))}
             </ul>
           ) : (
-            <p className="text-xs text-ink-muted">No direct role strengths highlighted.</p>
+            <p className="text-sm text-ink-secondary">No direct role strengths highlighted.</p>
           )}
         </div>
 
-        <div className="rounded-card border border-border border-t-4 border-t-info bg-surface p-5">
-          <div className="mb-3 flex items-center gap-2">
-            <Compass className="h-4 w-4 text-info" />
-            <h4 className="text-sm font-semibold text-ink">
-              Why They Translate (Human Factor)
+        {/* 2. Why They Translate (Human Factor / Adjacent Fit) */}
+        <div className="rounded-card border border-border border-l-4 border-l-info bg-surface p-6">
+          <div className="mb-3 flex items-center gap-2.5">
+            <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-info-soft text-info-ink">
+              <Compass className="h-4 w-4" />
+            </span>
+            <h4 className="font-display text-base font-bold text-ink">
+              Why They Translate (Human Factor &amp; Adjacent Fit)
             </h4>
           </div>
           {assessment.transferable_skills.length > 0 ? (
-            <ul className="space-y-2 text-xs leading-relaxed text-ink">
+            <ul className="max-w-4xl space-y-2.5 text-sm leading-relaxed text-ink">
               {assessment.transferable_skills.map((s, idx) => (
-                <li className="flex gap-2" key={idx}>
-                  <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-info" />
+                <li className="flex gap-2.5" key={idx}>
+                  <span className="mt-2 h-2 w-2 shrink-0 rounded-full bg-info" />
                   <span>{s}</span>
                 </li>
               ))}
             </ul>
           ) : (
-            <p className="text-xs text-ink-muted">No adjacent crossovers noted.</p>
+            <p className="text-sm text-ink-secondary">No adjacent crossovers noted.</p>
           )}
         </div>
 
-        <div className="rounded-card border border-border border-t-4 border-t-danger bg-surface p-5">
-          <div className="mb-3 flex items-center gap-2">
-            <AlertTriangle className="h-4 w-4 text-danger" />
-            <h4 className="text-sm font-semibold text-ink">Gaps / Risks to Verify</h4>
+        {/* 3. Gaps / Risks to Verify */}
+        <div className="rounded-card border border-border border-l-4 border-l-danger bg-surface p-6">
+          <div className="mb-3 flex items-center gap-2.5">
+            <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-danger-soft text-danger-ink">
+              <AlertTriangle className="h-4 w-4" />
+            </span>
+            <h4 className="font-display text-base font-bold text-ink">
+              Gaps / Risks to Verify in Interview
+            </h4>
           </div>
           {assessment.gaps_or_risks.length > 0 ? (
-            <ul className="space-y-2 text-xs leading-relaxed text-ink">
+            <ul className="max-w-4xl space-y-2.5 text-sm leading-relaxed text-ink">
               {assessment.gaps_or_risks.map((s, idx) => (
-                <li className="flex gap-2" key={idx}>
-                  <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-danger" />
+                <li className="flex gap-2.5" key={idx}>
+                  <span className="mt-2 h-2 w-2 shrink-0 rounded-full bg-danger" />
                   <span>{s}</span>
                 </li>
               ))}
             </ul>
           ) : (
-            <p className="text-xs text-ink-muted">No major gaps flagged.</p>
+            <p className="text-sm text-ink-secondary">No major gaps flagged.</p>
           )}
         </div>
       </div>
@@ -1436,25 +1451,25 @@ function PillarCard({
         : 'bg-danger-soft text-danger-ink';
 
   return (
-    <div className="rounded-card border border-border bg-surface p-4">
+    <div className="rounded-card border border-border bg-surface p-5">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-sm font-semibold text-ink">{label}</span>
+        <span className="text-base font-bold text-ink">{label}</span>
         <span
           className={cn(
-            'rounded-pill px-2.5 py-0.5 text-xs font-semibold tabular-nums',
+            'rounded-pill px-3 py-0.5 text-xs font-bold tabular-nums',
             badgeStyle,
           )}
         >
           {score} / {max} ({pct}%)
         </span>
       </div>
-      <div className="mt-2.5 h-2 w-full overflow-hidden rounded-full bg-surface-sunken">
+      <div className="mt-3 h-2.5 w-full overflow-hidden rounded-full bg-surface-sunken">
         <div
           className={cn('h-full rounded-full transition-all', barColor)}
           style={{ width: `${pct}%` }}
         />
       </div>
-      {note && <p className="mt-2 text-xs leading-relaxed text-ink-secondary">{note}</p>}
+      {note && <p className="mt-3 text-sm leading-relaxed text-ink">{note}</p>}
     </div>
   );
 }
@@ -1529,10 +1544,10 @@ function InterviewPrepSection({
     <div className="rounded-card border border-border bg-surface p-6">
       <div className="mb-4 flex items-center justify-between gap-2">
         <div>
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-secondary">
+          <h3 className="text-sm font-bold uppercase tracking-wide text-ink">
             Questions to Probe in Interview
           </h3>
-          <p className="mt-0.5 text-xs text-ink-muted">
+          <p className="mt-0.5 text-sm text-ink-secondary">
             Tailored questions based on missing details, adjacent transitions, or claims to verify.
           </p>
         </div>
@@ -1545,11 +1560,11 @@ function InterviewPrepSection({
       </div>
 
       {questions.length === 0 && !adding ? (
-        <p className="text-sm text-ink-muted">
+        <p className="text-sm text-ink-secondary">
           No interview prep questions yet. Run AI evaluation or add your own questions for the call.
         </p>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-3.5">
           {questions.map((q, idx) =>
             editingId === q.id ? (
               <div
@@ -1558,20 +1573,20 @@ function InterviewPrepSection({
               >
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   <Input
-                    className="bg-surface text-xs"
+                    className="bg-surface text-sm"
                     onChange={(e) => setTopicDraft(e.target.value)}
                     placeholder="Topic (e.g. URA EFRIS depth)"
                     value={topicDraft}
                   />
                   <Input
-                    className="bg-surface text-xs"
+                    className="bg-surface text-sm"
                     onChange={(e) => setWhyDraft(e.target.value)}
                     placeholder="Why ask (what was unclear on CV)"
                     value={whyDraft}
                   />
                 </div>
                 <Textarea
-                  className="min-h-0 bg-surface text-xs"
+                  className="min-h-0 bg-surface text-sm"
                   onChange={(e) => setQuestionDraft(e.target.value)}
                   placeholder="Exact question to ask the candidate…"
                   rows={2}
@@ -1601,10 +1616,10 @@ function InterviewPrepSection({
                     <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-primary-soft text-xs font-bold text-primary">
                       {idx + 1}
                     </span>
-                    <span className="rounded-pill bg-surface px-2.5 py-0.5 text-xs font-semibold text-ink">
+                    <span className="rounded-pill bg-surface px-3 py-0.5 text-xs font-bold text-ink">
                       {q.topic}
                     </span>
-                    <span className="text-[11px] text-ink-muted">
+                    <span className="text-xs text-ink-muted">
                       {q.source === 'human' ? 'Added by recruiter' : 'AI suggested'}
                     </span>
                   </div>
@@ -1627,10 +1642,10 @@ function InterviewPrepSection({
                     </button>
                   </div>
                 </div>
-                <p className="mt-2 text-sm font-semibold text-ink">{q.question}</p>
+                <p className="mt-2.5 text-base font-semibold leading-snug text-ink">{q.question}</p>
                 {q.why_ask && (
-                  <p className="mt-1.5 text-xs text-ink-secondary">
-                    <strong className="font-medium text-ink-muted">Why probe:</strong> {q.why_ask}
+                  <p className="mt-2 text-sm leading-relaxed text-ink-secondary">
+                    <strong className="font-semibold text-ink">Why probe:</strong> {q.why_ask}
                   </p>
                 )}
               </div>
@@ -1643,20 +1658,20 @@ function InterviewPrepSection({
         <div className="mt-4 space-y-2.5 rounded-control border border-border bg-surface-sunken/40 p-4">
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <Input
-              className="bg-surface text-xs"
+              className="bg-surface text-sm"
               onChange={(e) => setTopicDraft(e.target.value)}
               placeholder="Topic (e.g. Team management scale)"
               value={topicDraft}
             />
             <Input
-              className="bg-surface text-xs"
+              className="bg-surface text-sm"
               onChange={(e) => setWhyDraft(e.target.value)}
               placeholder="Why ask (optional note)"
               value={whyDraft}
             />
           </div>
           <Textarea
-            className="min-h-0 bg-surface text-xs"
+            className="min-h-0 bg-surface text-sm"
             onChange={(e) => setQuestionDraft(e.target.value)}
             placeholder="Write the question to ask in the interview…"
             rows={2}
@@ -1770,7 +1785,7 @@ function QuickAction({
 }) {
   return (
     <a
-      className="inline-flex items-center gap-1.5 rounded-control border border-border bg-surface px-2.5 py-1 text-xs font-medium text-ink transition-colors hover:bg-surface-sunken"
+      className="inline-flex items-center gap-1.5 rounded-control border border-border bg-surface px-2.5 py-1 text-xs font-semibold text-ink transition-colors hover:bg-surface-sunken"
       href={href}
       rel="noreferrer"
       target="_blank"

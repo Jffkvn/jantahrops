@@ -13,7 +13,6 @@ import {
   AlertTriangle,
   Plus,
   X,
-  Sparkles,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -53,9 +52,7 @@ interface CandidateCompareMatrixProps {
 
 /**
  * Side-by-side comparison matrix for 2 or 3 candidates on the same vacancy.
- * Lets HR specialists compare overall fit, 4-pillar scores, screening answers,
- * CV qualifications, strengths, transferable skills, and gaps in parallel columns,
- * and move any candidate's pipeline stage directly from their column.
+ * Does NOT auto-pick comparison candidates — HR explicitly selects who to compare.
  */
 export function CandidateCompareMatrix({
   vacancyId,
@@ -71,35 +68,21 @@ export function CandidateCompareMatrix({
     [applications],
   );
 
-  // Pick sensible initial defaults: primary candidate (or #1) + next top 1-2 candidates
-  const defaultIds = useMemo(() => {
-    const firstId = primaryApplicationId ?? sortedApps[0]?.id ?? '';
-    const others = sortedApps.filter((a) => a.id !== firstId);
-    const secondId = others[0]?.id ?? '';
-    const thirdId = others[1]?.id ?? '';
-    return [firstId, secondId, thirdId];
-  }, [primaryApplicationId, sortedApps]);
+  // Slot 1 is locked when viewing a specific candidate; otherwise HR chooses Slot 1 & Slot 2.
+  const [slot1Id, setSlot1Id] = useState<string>(primaryApplicationId ?? '');
+  const [slot2Id, setSlot2Id] = useState<string>('');
+  const [slot3Id, setSlot3Id] = useState<string>('');
+  const [showThirdSlot, setShowThirdSlot] = useState<boolean>(false);
 
-  const [slot1Id, setSlot1Id] = useState<string>(defaultIds[0] ?? '');
-  const [slot2Id, setSlot2Id] = useState<string>(defaultIds[1] ?? '');
-  const [slot3Id, setSlot3Id] = useState<string>(defaultIds[2] ?? '');
-  const [showThirdSlot, setShowThirdSlot] = useState<boolean>(() => Boolean(defaultIds[2]));
-
-  // Keep Slot 1 synced if primaryApplicationId changes (e.g. clicking Next/Prev applicant)
-  const effectiveSlot1Id = primaryApplicationId ?? (slot1Id || defaultIds[0] || '');
-  const effectiveSlot2Id =
-    slot2Id && slot2Id !== effectiveSlot1Id
-      ? slot2Id
-      : (sortedApps.find((a) => a.id !== effectiveSlot1Id)?.id ?? '');
+  const effectiveSlot1Id = primaryApplicationId ?? slot1Id;
+  const effectiveSlot2Id = slot2Id && slot2Id !== effectiveSlot1Id ? slot2Id : '';
   const effectiveSlot3Id =
     showThirdSlot &&
     slot3Id &&
     slot3Id !== effectiveSlot1Id &&
     slot3Id !== effectiveSlot2Id
       ? slot3Id
-      : showThirdSlot
-        ? (sortedApps.find((a) => a.id !== effectiveSlot1Id && a.id !== effectiveSlot2Id)?.id ?? '')
-        : '';
+      : '';
 
   const selectedApps = useMemo(() => {
     const ids = [
@@ -163,7 +146,7 @@ export function CandidateCompareMatrix({
         <h3 className="mt-2 font-display text-base font-semibold text-ink">
           Need at Least 2 Applicants to Compare
         </h3>
-        <p className="mx-auto mt-1 max-w-md text-xs text-ink-secondary">
+        <p className="mx-auto mt-1 max-w-md text-sm text-ink-secondary">
           This vacancy currently has {sortedApps.length} applicant
           {sortedApps.length === 1 ? '' : 's'}. Once 2 or more candidates are in the pipeline, you
           can compare them side-by-side here.
@@ -181,134 +164,75 @@ export function CandidateCompareMatrix({
     toast.success(`Moved to ${stageMeta(stage as ApplicationStage).label}`);
   };
 
-  const resetToTopMatches = () => {
-    const first = primaryApplicationId ?? sortedApps[0]?.id ?? '';
-    const others = sortedApps.filter((a) => a.id !== first);
-    setSlot1Id(first);
-    setSlot2Id(others[0]?.id ?? '');
-    if (others[1]) {
-      setSlot3Id(others[1].id);
-      setShowThirdSlot(true);
-    }
-  };
-
+  const isReadyToCompare = Boolean(effectiveSlot1Id && effectiveSlot2Id && selectedApps.length >= 2);
   const colGridClass =
     selectedApps.length === 3
       ? 'grid-cols-1 lg:grid-cols-3'
       : 'grid-cols-1 lg:grid-cols-2';
 
+  const primaryCandidateApp = sortedApps.find((a) => a.id === effectiveSlot1Id);
+
   return (
-    <div className="space-y-4 rounded-card border border-border bg-surface p-6">
-      {/* Header & Candidate Slot Pickers */}
-      <div className="flex flex-col justify-between gap-3 border-b border-border pb-4 md:flex-row md:items-center">
-        <div>
-          <div className="flex items-center gap-2">
-            <Scale className="h-4 w-4 text-primary" />
-            <h3 className="font-display text-base font-semibold text-ink">
-              Compare Candidates Side-by-Side ({selectedApps.length})
-            </h3>
-          </div>
-          <p className="mt-0.5 text-xs text-ink-secondary">
-            Compare match scores, 4-pillar breakdowns, screening answers, and transferable skills
-            across 2 or 3 contenders.
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <Button onClick={resetToTopMatches} size="sm" type="button" variant="secondary">
-            <Sparkles className="mr-1.5 h-3.5 w-3.5 text-primary" />
-            Auto-pick top matches
-          </Button>
-          {!showThirdSlot && sortedApps.length >= 3 && (
-            <Button
-              onClick={() => {
-                const third = sortedApps.find(
-                  (a) => a.id !== effectiveSlot1Id && a.id !== effectiveSlot2Id,
-                );
-                if (third) setSlot3Id(third.id);
-                setShowThirdSlot(true);
-              }}
-              size="sm"
-              type="button"
-              variant="secondary"
-            >
-              <Plus className="mr-1 h-3.5 w-3.5" />
-              Add 3rd candidate
-            </Button>
-          )}
-        </div>
-      </div>
-
+    <div className="space-y-5 rounded-card border border-border bg-surface p-6">
       {/* Candidate Slot Selectors Row */}
-      <div className={cn('grid gap-4', colGridClass)}>
-        {/* Slot 1 */}
-        <div className="rounded-control border border-border bg-surface-sunken/40 p-3">
-          <div className="mb-1.5 flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-ink-secondary">
-            <span>Candidate 1 {primaryApplicationId ? '(Current)' : ''}</span>
-          </div>
-          {primaryApplicationId ? (
-            <div className="rounded-control border border-border bg-surface px-3 py-2 text-sm font-semibold text-ink">
-              {formatCandidateOptionLabel(selectedApps[0])}
-            </div>
-          ) : (
-            <Select onValueChange={setSlot1Id} value={effectiveSlot1Id}>
-              <SelectTrigger className="w-full bg-surface">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {sortedApps.map((app) => (
-                  <SelectItem key={app.id} value={app.id}>
-                    {formatCandidateOptionLabel(app)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+      <div className="flex flex-col gap-4">
+        <div
+          className={cn(
+            'grid gap-4',
+            showThirdSlot ? 'grid-cols-1 lg:grid-cols-3' : 'grid-cols-1 lg:grid-cols-2',
           )}
-        </div>
-
-        {/* Slot 2 */}
-        <div className="rounded-control border border-border bg-surface-sunken/40 p-3">
-          <div className="mb-1.5 flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-ink-secondary">
-            <span>Candidate 2</span>
-          </div>
-          <Select onValueChange={setSlot2Id} value={effectiveSlot2Id}>
-            <SelectTrigger className="w-full bg-surface">
-              <SelectValue placeholder="Choose candidate…" />
-            </SelectTrigger>
-            <SelectContent>
-              {sortedApps
-                .filter((a) => a.id !== effectiveSlot1Id)
-                .map((app) => (
-                  <SelectItem key={app.id} value={app.id}>
-                    {formatCandidateOptionLabel(app)}
-                  </SelectItem>
-                ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* Slot 3 (Optional) */}
-        {showThirdSlot && sortedApps.length >= 3 && (
-          <div className="rounded-control border border-border bg-surface-sunken/40 p-3">
-            <div className="mb-1.5 flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-ink-secondary">
-              <span>Candidate 3</span>
-              <button
-                aria-label="Remove 3rd candidate"
-                className="inline-flex items-center gap-0.5 text-[11px] font-medium text-ink-muted hover:text-danger"
-                onClick={() => setShowThirdSlot(false)}
-                type="button"
-              >
-                <X className="h-3 w-3" />
-                Remove
-              </button>
+        >
+          {/* Slot 1 */}
+          <div className="rounded-control border border-border bg-surface-sunken/40 p-4">
+            <div className="mb-2 flex items-center justify-between text-xs font-bold uppercase tracking-wide text-ink-secondary">
+              <span>Candidate 1 {primaryApplicationId ? '(Current Applicant)' : ''}</span>
             </div>
-            <Select onValueChange={setSlot3Id} value={effectiveSlot3Id}>
-              <SelectTrigger className="w-full bg-surface">
-                <SelectValue placeholder="Choose 3rd candidate…" />
+            {primaryApplicationId ? (
+              <div className="rounded-control border border-border bg-surface px-3.5 py-2.5 text-sm font-semibold text-ink">
+                {formatCandidateOptionLabel(primaryCandidateApp)}
+              </div>
+            ) : (
+              <Select onValueChange={setSlot1Id} value={effectiveSlot1Id}>
+                <SelectTrigger className="w-full bg-surface text-sm">
+                  <SelectValue placeholder="Select first candidate to compare…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {sortedApps.map((app) => (
+                    <SelectItem key={app.id} value={app.id}>
+                      {formatCandidateOptionLabel(app)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+
+          {/* Slot 2 */}
+          <div className="rounded-control border border-border bg-surface-sunken/40 p-4">
+            <div className="mb-2 flex items-center justify-between text-xs font-bold uppercase tracking-wide text-ink-secondary">
+              <span>Candidate 2 (Choose who to compare with)</span>
+              {effectiveSlot2Id && (
+                <button
+                  className="inline-flex items-center gap-1 text-xs font-medium text-ink-muted hover:text-danger"
+                  onClick={() => {
+                    setSlot2Id('');
+                    setSlot3Id('');
+                    setShowThirdSlot(false);
+                  }}
+                  type="button"
+                >
+                  <X className="h-3.5 w-3.5" />
+                  Clear
+                </button>
+              )}
+            </div>
+            <Select onValueChange={setSlot2Id} value={effectiveSlot2Id}>
+              <SelectTrigger className="w-full bg-surface text-sm">
+                <SelectValue placeholder="Select a candidate from this vacancy…" />
               </SelectTrigger>
               <SelectContent>
                 {sortedApps
-                  .filter((a) => a.id !== effectiveSlot1Id && a.id !== effectiveSlot2Id)
+                  .filter((a) => a.id !== effectiveSlot1Id)
                   .map((app) => (
                     <SelectItem key={app.id} value={app.id}>
                       {formatCandidateOptionLabel(app)}
@@ -317,365 +241,432 @@ export function CandidateCompareMatrix({
               </SelectContent>
             </Select>
           </div>
+
+          {/* Slot 3 (Optional) */}
+          {showThirdSlot && sortedApps.length >= 3 && (
+            <div className="rounded-control border border-border bg-surface-sunken/40 p-4">
+              <div className="mb-2 flex items-center justify-between text-xs font-bold uppercase tracking-wide text-ink-secondary">
+                <span>Candidate 3</span>
+                <button
+                  aria-label="Remove 3rd candidate"
+                  className="inline-flex items-center gap-1 text-xs font-medium text-ink-muted hover:text-danger"
+                  onClick={() => {
+                    setSlot3Id('');
+                    setShowThirdSlot(false);
+                  }}
+                  type="button"
+                >
+                  <X className="h-3.5 w-3.5" />
+                  Remove
+                </button>
+              </div>
+              <Select onValueChange={setSlot3Id} value={effectiveSlot3Id}>
+                <SelectTrigger className="w-full bg-surface text-sm">
+                  <SelectValue placeholder="Select a 3rd candidate…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {sortedApps
+                    .filter((a) => a.id !== effectiveSlot1Id && a.id !== effectiveSlot2Id)
+                    .map((app) => (
+                      <SelectItem key={app.id} value={app.id}>
+                        {formatCandidateOptionLabel(app)}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+        </div>
+
+        {/* Add 3rd candidate button once Candidate 2 is chosen */}
+        {isReadyToCompare && !showThirdSlot && sortedApps.length >= 3 && (
+          <div className="flex justify-end">
+            <Button
+              onClick={() => setShowThirdSlot(true)}
+              size="sm"
+              type="button"
+              variant="secondary"
+            >
+              <Plus className="mr-1.5 h-4 w-4" />
+              Add 3rd candidate to compare
+            </Button>
+          </div>
         )}
       </div>
 
-      {/* Main Comparison Columns */}
-      <div className={cn('grid gap-4', colGridClass)}>
-        {selectedApps.map((app) => {
-          const contact = app.candidateContact;
-          const candidate = app.candidate;
-          const assessment = parseAiAssessment(app.ai_assessment);
-          const parsedNotes = parseApplicationNotes(app.notes);
-          const parsedCv = parseCvData(candidate?.cv_parsed);
-          const isOverallLeader =
-            maxOverallScore > 0 &&
-            app.match_tier !== 'unscored' &&
-            app.match_score === maxOverallScore;
+      {/* Empty prompt until HR selects Candidate 2 */}
+      {!isReadyToCompare ? (
+        <div className="rounded-control border border-dashed border-border-strong bg-surface-sunken/30 px-6 py-8 text-center">
+          <Scale className="mx-auto h-6 w-6 text-primary" />
+          <p className="mt-2 text-sm font-medium text-ink">
+            Pick a candidate in the <strong>Candidate 2</strong> dropdown above to compare them
+            side-by-side.
+          </p>
+          <p className="mt-1 text-xs text-ink-secondary">
+            You’ll see their match scores, 4-pillar bars, screening answers, strengths, and gaps
+            aligned next to each other.
+          </p>
+        </div>
+      ) : (
+        /* Main Comparison Columns */
+        <div className={cn('grid gap-5', colGridClass)}>
+          {selectedApps.map((app) => {
+            const contact = app.candidateContact;
+            const candidate = app.candidate;
+            const assessment = parseAiAssessment(app.ai_assessment);
+            const parsedNotes = parseApplicationNotes(app.notes);
+            const parsedCv = parseCvData(candidate?.cv_parsed);
+            const isOverallLeader =
+              maxOverallScore > 0 &&
+              app.match_tier !== 'unscored' &&
+              app.match_score === maxOverallScore;
 
-          const tierAccent =
-            app.match_tier === 'strong'
-              ? 'border-t-4 border-t-success'
-              : app.match_tier === 'adjacent'
-                ? 'border-t-4 border-t-info'
-                : app.match_tier === 'partial'
-                  ? 'border-t-4 border-t-warning'
-                  : app.match_tier === 'low'
-                    ? 'border-t-4 border-t-danger'
-                    : 'border-t-4 border-t-border-strong';
+            const tierAccent =
+              app.match_tier === 'strong'
+                ? 'border-t-4 border-t-success'
+                : app.match_tier === 'adjacent'
+                  ? 'border-t-4 border-t-info'
+                  : app.match_tier === 'partial'
+                    ? 'border-t-4 border-t-warning'
+                    : app.match_tier === 'low'
+                      ? 'border-t-4 border-t-danger'
+                      : 'border-t-4 border-t-border-strong';
 
-          return (
-            <div
-              className={cn(
-                'flex flex-col space-y-4 rounded-card border border-border bg-surface p-5',
-                tierAccent,
-              )}
-              key={app.id}
-            >
-              {/* 1. Candidate Profile & Stage Action */}
-              <div className="border-b border-border pb-4">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <button
-                      className="text-left font-display text-lg font-semibold text-ink hover:text-primary hover:underline"
-                      onClick={() =>
-                        void navigate(`/recruitment/${vacancyId}/applications/${app.id}`)
-                      }
-                      type="button"
-                    >
-                      {contact?.full_name ?? 'Unnamed candidate'}
-                    </button>
-                    <p className="mt-0.5 line-clamp-2 text-xs text-ink-secondary">
-                      {candidate?.headline ?? 'No headline'}
-                    </p>
-                  </div>
-                  {isOverallLeader && (
-                    <span className="inline-flex shrink-0 items-center gap-1 rounded-pill bg-success-soft px-2 py-0.5 text-[11px] font-semibold text-success-ink">
-                      <Trophy className="h-3 w-3" />
-                      Top Match
-                    </span>
-                  )}
-                </div>
-
-                {/* Metadata pills */}
-                <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-secondary">
-                  {parsedNotes.location && (
-                    <span className="inline-flex items-center gap-1">
-                      <MapPin className="h-3 w-3 text-ink-muted" />
-                      {parsedNotes.location}
-                    </span>
-                  )}
-                  {candidate?.years_experience != null && (
-                    <span className="font-medium text-ink">
-                      {candidate.years_experience} yrs exp
-                    </span>
-                  )}
-                  {candidate?.salary_expectation_ugx != null &&
-                    candidate.salary_expectation_ugx > 0 && (
-                      <span>
-                        {formatUGX(BigInt(candidate.salary_expectation_ugx))}
+            return (
+              <div
+                className={cn(
+                  'flex flex-col space-y-5 rounded-card border border-border bg-surface p-5',
+                  tierAccent,
+                )}
+                key={app.id}
+              >
+                {/* 1. Candidate Profile & Stage Action */}
+                <div className="border-b border-border pb-4">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <button
+                        className="text-left font-display text-xl font-semibold text-ink hover:text-primary hover:underline"
+                        onClick={() =>
+                          void navigate(`/recruitment/${vacancyId}/applications/${app.id}`)
+                        }
+                        type="button"
+                      >
+                        {contact?.full_name ?? 'Unnamed candidate'}
+                      </button>
+                      <p className="mt-1 line-clamp-2 text-sm text-ink-secondary">
+                        {candidate?.headline ?? 'No headline'}
+                      </p>
+                    </div>
+                    {isOverallLeader && (
+                      <span className="inline-flex shrink-0 items-center gap-1 rounded-pill bg-success-soft px-2.5 py-1 text-xs font-semibold text-success-ink">
+                        <Trophy className="h-3.5 w-3.5" />
+                        Top Match
                       </span>
                     )}
-                  {candidate?.availability && (
-                    <span>
-                      {AVAILABILITY_LABELS[candidate.availability] ?? candidate.availability}
-                    </span>
-                  )}
-                </div>
+                  </div>
 
-                {/* Document & Contact Action Bar */}
-                <div className="mt-3 flex flex-wrap gap-1.5">
-                  {candidate && (
-                    <button
-                      className="inline-flex items-center gap-1 rounded-control border border-border bg-surface-sunken/50 px-2.5 py-1 text-xs font-medium text-ink hover:bg-surface-sunken"
-                      onClick={() =>
-                        void cvSignedUrl(candidate.id).then((url) => {
-                          if (url) window.open(url, '_blank', 'noopener,noreferrer');
-                          else toast.error('No CV on file');
-                        })
-                      }
-                      type="button"
-                    >
-                      <FileText className="h-3 w-3 text-primary" />
-                      CV
-                    </button>
-                  )}
-                  {parsedNotes.coverLetterPath && (
-                    <button
-                      className="inline-flex items-center gap-1 rounded-control border border-border bg-surface-sunken/50 px-2.5 py-1 text-xs font-medium text-ink hover:bg-surface-sunken"
-                      onClick={() => {
-                        if (!parsedNotes.coverLetterPath) return;
-                        void candidateStorageSignedUrl(parsedNotes.coverLetterPath).then((url) => {
-                          if (url) window.open(url, '_blank', 'noopener,noreferrer');
-                          else toast.error('Could not open cover letter');
-                        });
-                      }}
-                      type="button"
-                    >
-                      <FileText className="h-3 w-3 text-primary" />
-                      Cover Letter
-                    </button>
-                  )}
-                  {parsedNotes.linkedInUrl && (
-                    <a
-                      className="inline-flex items-center gap-1 rounded-control border border-border bg-surface-sunken/50 px-2.5 py-1 text-xs font-medium text-ink hover:bg-surface-sunken"
-                      href={parsedNotes.linkedInUrl}
-                      rel="noreferrer"
-                      target="_blank"
-                    >
-                      <ExternalLink className="h-3 w-3 text-primary" />
-                      LinkedIn
-                    </a>
-                  )}
-                  {contact?.phone_e164 && (
-                    <>
-                      <a
-                        className="inline-flex items-center gap-1 rounded-control border border-border bg-surface-sunken/50 px-2.5 py-1 text-xs font-medium text-ink hover:bg-surface-sunken"
-                        href={`tel:${contact.phone_e164}`}
+                  {/* Metadata pills */}
+                  <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-secondary">
+                    {parsedNotes.location && (
+                      <span className="inline-flex items-center gap-1">
+                        <MapPin className="h-3.5 w-3.5 text-ink-muted" />
+                        {parsedNotes.location}
+                      </span>
+                    )}
+                    {candidate?.years_experience != null && (
+                      <span className="font-semibold text-ink">
+                        {candidate.years_experience} yrs exp
+                      </span>
+                    )}
+                    {candidate?.salary_expectation_ugx != null &&
+                      candidate.salary_expectation_ugx > 0 && (
+                        <span>{formatUGX(BigInt(candidate.salary_expectation_ugx))}</span>
+                      )}
+                    {candidate?.availability && (
+                      <span>
+                        {AVAILABILITY_LABELS[candidate.availability] ?? candidate.availability}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Document & Contact Action Bar */}
+                  <div className="mt-3.5 flex flex-wrap gap-2">
+                    {candidate && (
+                      <button
+                        className="inline-flex items-center gap-1.5 rounded-control border border-border bg-surface-sunken/50 px-3 py-1.5 text-xs font-medium text-ink hover:bg-surface-sunken"
+                        onClick={() =>
+                          void cvSignedUrl(candidate.id).then((url) => {
+                            if (url) window.open(url, '_blank', 'noopener,noreferrer');
+                            else toast.error('No CV on file');
+                          })
+                        }
+                        type="button"
                       >
-                        <Phone className="h-3 w-3 text-primary" />
-                        Call
-                      </a>
+                        <FileText className="h-3.5 w-3.5 text-primary" />
+                        CV
+                      </button>
+                    )}
+                    {parsedNotes.coverLetterPath && (
+                      <button
+                        className="inline-flex items-center gap-1.5 rounded-control border border-border bg-surface-sunken/50 px-3 py-1.5 text-xs font-medium text-ink hover:bg-surface-sunken"
+                        onClick={() => {
+                          if (!parsedNotes.coverLetterPath) return;
+                          void candidateStorageSignedUrl(parsedNotes.coverLetterPath).then(
+                            (url) => {
+                              if (url) window.open(url, '_blank', 'noopener,noreferrer');
+                              else toast.error('Could not open cover letter');
+                            },
+                          );
+                        }}
+                        type="button"
+                      >
+                        <FileText className="h-3.5 w-3.5 text-primary" />
+                        Cover Letter
+                      </button>
+                    )}
+                    {parsedNotes.linkedInUrl && (
                       <a
-                        className="inline-flex items-center gap-1 rounded-control border border-border bg-surface-sunken/50 px-2.5 py-1 text-xs font-medium text-ink hover:bg-surface-sunken"
-                        href={`https://wa.me/${contact.phone_e164.replace('+', '')}`}
+                        className="inline-flex items-center gap-1.5 rounded-control border border-border bg-surface-sunken/50 px-3 py-1.5 text-xs font-medium text-ink hover:bg-surface-sunken"
+                        href={parsedNotes.linkedInUrl}
                         rel="noreferrer"
                         target="_blank"
                       >
-                        <MessageCircle className="h-3 w-3 text-primary" />
-                        WhatsApp
+                        <ExternalLink className="h-3.5 w-3.5 text-primary" />
+                        LinkedIn
                       </a>
-                    </>
-                  )}
-                </div>
-
-                {/* Stage Selector right in the column */}
-                <div className="mt-3 flex items-center gap-2">
-                  <span className="text-xs font-medium text-ink-secondary">Stage:</span>
-                  <Select
-                    onValueChange={(v) => void handleStageChange(app.id, v)}
-                    value={app.stage}
-                  >
-                    <SelectTrigger className="h-8 flex-1 text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {PIPELINE_STAGES.map((s) => (
-                        <SelectItem key={s.value} value={s.value}>
-                          {s.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              {/* 2. AI Verdict & Summary */}
-              <div className="rounded-control border border-border bg-surface-sunken/30 p-3.5">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-[11px] font-semibold uppercase tracking-wide text-ink-secondary">
-                    AI Verdict
-                  </span>
-                  {app.match_tier ? (
-                    <MatchBadge score={app.match_score} tier={app.match_tier} />
-                  ) : (
-                    <span className="text-xs text-ink-muted">Not evaluated</span>
-                  )}
-                </div>
-                <p className="mt-2 text-xs leading-relaxed text-ink">
-                  {assessment?.summary ??
-                    (app.match_tier
-                      ? MATCH_TIER_META[app.match_tier].label
-                      : 'Run AI evaluation on this candidate to see a full comparison.')}
-                </p>
-              </div>
-
-              {/* 3. 4-Pillar Score Bars */}
-              <div className="space-y-2.5">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-secondary">
-                  4-Pillar Score Comparison
-                </p>
-                {assessment && assessment.status === 'scored' ? (
-                  <>
-                    <CompactPillarBar
-                      isLeader={
-                        maxPillarScores.core > 0 &&
-                        assessment.pillars.core_skills.score === maxPillarScores.core
-                      }
-                      label="Core Skills"
-                      max={assessment.pillars.core_skills.max}
-                      score={assessment.pillars.core_skills.score}
-                    />
-                    <CompactPillarBar
-                      isLeader={
-                        maxPillarScores.transferable > 0 &&
-                        assessment.pillars.transferable_and_industry.score ===
-                          maxPillarScores.transferable
-                      }
-                      label="Transferable & Industry"
-                      max={assessment.pillars.transferable_and_industry.max}
-                      score={assessment.pillars.transferable_and_industry.score}
-                    />
-                    <CompactPillarBar
-                      isLeader={
-                        maxPillarScores.experience > 0 &&
-                        assessment.pillars.experience_and_trajectory.score ===
-                          maxPillarScores.experience
-                      }
-                      label="Experience & Trajectory"
-                      max={assessment.pillars.experience_and_trajectory.max}
-                      score={assessment.pillars.experience_and_trajectory.score}
-                    />
-                    <CompactPillarBar
-                      isLeader={
-                        maxPillarScores.practical > 0 &&
-                        assessment.pillars.practical_and_cover_note.score ===
-                          maxPillarScores.practical
-                      }
-                      label="Cover Note & Practicals"
-                      max={assessment.pillars.practical_and_cover_note.max}
-                      score={assessment.pillars.practical_and_cover_note.score}
-                    />
-                  </>
-                ) : (
-                  <p className="text-xs text-ink-muted">No pillar scores available.</p>
-                )}
-              </div>
-
-              {/* 4. Screening Question Answers (Aligned across columns) */}
-              {screeningQuestions.length > 0 && (
-                <div className="space-y-2 border-t border-border pt-3.5">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-secondary">
-                    Screening Answers
-                  </p>
-                  {screeningQuestions.map((q) => {
-                    const rawVal = (app.screening_answers ?? {})[q.id];
-                    const formatted = formatScreeningValue(rawVal);
-                    return (
-                      <div
-                        className="rounded-control border border-border bg-surface-sunken/25 p-2.5"
-                        key={q.id}
-                      >
-                        <p className="text-[11px] text-ink-secondary">{q.question}</p>
-                        <p className="mt-0.5 text-xs font-semibold text-ink">{formatted}</p>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {/* 5. Top Skills & Qualifications */}
-              <div className="space-y-2 border-t border-border pt-3.5">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-secondary">
-                  Skills &amp; Qualifications
-                </p>
-                <div className="flex flex-wrap gap-1">
-                  {(parsedCv?.qualifications ?? []).map((qual) => (
-                    <span
-                      className="rounded-pill bg-primary-soft px-2 py-0.5 text-[11px] font-medium text-primary"
-                      key={qual}
-                    >
-                      {qual}
-                    </span>
-                  ))}
-                  {(candidate?.skills ?? []).slice(0, 8).map((skill) => (
-                    <span
-                      className="rounded-pill bg-surface-sunken px-2 py-0.5 text-[11px] text-ink"
-                      key={skill}
-                    >
-                      {skill}
-                    </span>
-                  ))}
-                  {(candidate?.skills ?? []).length === 0 &&
-                    (parsedCv?.qualifications ?? []).length === 0 && (
-                      <span className="text-xs text-ink-muted">No skills listed</span>
                     )}
+                    {contact?.phone_e164 && (
+                      <>
+                        <a
+                          className="inline-flex items-center gap-1.5 rounded-control border border-border bg-surface-sunken/50 px-3 py-1.5 text-xs font-medium text-ink hover:bg-surface-sunken"
+                          href={`tel:${contact.phone_e164}`}
+                        >
+                          <Phone className="h-3.5 w-3.5 text-primary" />
+                          Call
+                        </a>
+                        <a
+                          className="inline-flex items-center gap-1.5 rounded-control border border-border bg-surface-sunken/50 px-3 py-1.5 text-xs font-medium text-ink hover:bg-surface-sunken"
+                          href={`https://wa.me/${contact.phone_e164.replace('+', '')}`}
+                          rel="noreferrer"
+                          target="_blank"
+                        >
+                          <MessageCircle className="h-3.5 w-3.5 text-primary" />
+                          WhatsApp
+                        </a>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Stage Selector right in the column */}
+                  <div className="mt-3.5 flex items-center gap-2">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-ink-secondary">
+                      Stage:
+                    </span>
+                    <Select
+                      onValueChange={(v) => void handleStageChange(app.id, v)}
+                      value={app.stage}
+                    >
+                      <SelectTrigger className="h-9 flex-1 text-sm">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {PIPELINE_STAGES.map((s) => (
+                          <SelectItem key={s.value} value={s.value}>
+                            {s.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {/* 2. AI Verdict & Summary */}
+                <div className="rounded-control border border-border bg-surface-sunken/30 p-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-bold uppercase tracking-wide text-ink-secondary">
+                      AI Verdict
+                    </span>
+                    {app.match_tier ? (
+                      <MatchBadge score={app.match_score} tier={app.match_tier} />
+                    ) : (
+                      <span className="text-xs text-ink-muted">Not evaluated</span>
+                    )}
+                  </div>
+                  <p className="mt-2.5 text-sm leading-relaxed text-ink">
+                    {assessment?.summary ??
+                      (app.match_tier
+                        ? MATCH_TIER_META[app.match_tier].label
+                        : 'Run AI evaluation on this candidate to see a full comparison.')}
+                  </p>
+                </div>
+
+                {/* 3. 4-Pillar Score Bars */}
+                <div className="space-y-3">
+                  <p className="text-xs font-bold uppercase tracking-wide text-ink-secondary">
+                    4-Pillar Score Comparison
+                  </p>
+                  {assessment && assessment.status === 'scored' ? (
+                    <>
+                      <CompactPillarBar
+                        isLeader={
+                          maxPillarScores.core > 0 &&
+                          assessment.pillars.core_skills.score === maxPillarScores.core
+                        }
+                        label="Core Skills"
+                        max={assessment.pillars.core_skills.max}
+                        score={assessment.pillars.core_skills.score}
+                      />
+                      <CompactPillarBar
+                        isLeader={
+                          maxPillarScores.transferable > 0 &&
+                          assessment.pillars.transferable_and_industry.score ===
+                            maxPillarScores.transferable
+                        }
+                        label="Transferable & Industry"
+                        max={assessment.pillars.transferable_and_industry.max}
+                        score={assessment.pillars.transferable_and_industry.score}
+                      />
+                      <CompactPillarBar
+                        isLeader={
+                          maxPillarScores.experience > 0 &&
+                          assessment.pillars.experience_and_trajectory.score ===
+                            maxPillarScores.experience
+                        }
+                        label="Experience & Trajectory"
+                        max={assessment.pillars.experience_and_trajectory.max}
+                        score={assessment.pillars.experience_and_trajectory.score}
+                      />
+                      <CompactPillarBar
+                        isLeader={
+                          maxPillarScores.practical > 0 &&
+                          assessment.pillars.practical_and_cover_note.score ===
+                            maxPillarScores.practical
+                        }
+                        label="Cover Note & Practicals"
+                        max={assessment.pillars.practical_and_cover_note.max}
+                        score={assessment.pillars.practical_and_cover_note.score}
+                      />
+                    </>
+                  ) : (
+                    <p className="text-sm text-ink-muted">No pillar scores available.</p>
+                  )}
+                </div>
+
+                {/* 4. Screening Question Answers (Aligned across columns) */}
+                {screeningQuestions.length > 0 && (
+                  <div className="space-y-2.5 border-t border-border pt-4">
+                    <p className="text-xs font-bold uppercase tracking-wide text-ink-secondary">
+                      Screening Answers
+                    </p>
+                    {screeningQuestions.map((q) => {
+                      const rawVal = (app.screening_answers ?? {})[q.id];
+                      const formatted = formatScreeningValue(rawVal);
+                      return (
+                        <div
+                          className="rounded-control border border-border bg-surface-sunken/25 p-3"
+                          key={q.id}
+                        >
+                          <p className="text-xs font-medium text-ink-secondary">{q.question}</p>
+                          <p className="mt-1 text-sm font-semibold text-ink">{formatted}</p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* 5. Top Skills & Qualifications */}
+                <div className="space-y-2.5 border-t border-border pt-4">
+                  <p className="text-xs font-bold uppercase tracking-wide text-ink-secondary">
+                    Skills &amp; Qualifications
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {(parsedCv?.qualifications ?? []).map((qual) => (
+                      <span
+                        className="rounded-pill bg-primary-soft px-2.5 py-0.5 text-xs font-medium text-primary"
+                        key={qual}
+                      >
+                        {qual}
+                      </span>
+                    ))}
+                    {(candidate?.skills ?? []).slice(0, 8).map((skill) => (
+                      <span
+                        className="rounded-pill bg-surface-sunken px-2.5 py-0.5 text-xs font-medium text-ink"
+                        key={skill}
+                      >
+                        {skill}
+                      </span>
+                    ))}
+                    {(candidate?.skills ?? []).length === 0 &&
+                      (parsedCv?.qualifications ?? []).length === 0 && (
+                        <span className="text-sm text-ink-muted">No skills listed</span>
+                      )}
+                  </div>
+                </div>
+
+                {/* 6. Key Strengths */}
+                <div className="space-y-2 border-t border-border pt-4">
+                  <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-success-ink">
+                    <CheckCircle2 className="h-4 w-4 text-success" />
+                    Key Strengths
+                  </p>
+                  {assessment && assessment.strengths.length > 0 ? (
+                    <ul className="space-y-2 text-sm leading-relaxed text-ink">
+                      {assessment.strengths.map((s, idx) => (
+                        <li className="flex gap-2" key={idx}>
+                          <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-success" />
+                          <span>{s}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-sm text-ink-muted">—</p>
+                  )}
+                </div>
+
+                {/* 7. Why They Translate (Adjacent Fit) */}
+                <div className="space-y-2 border-t border-border pt-4">
+                  <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-info-ink">
+                    <Compass className="h-4 w-4 text-info" />
+                    Why They Translate
+                  </p>
+                  {assessment && assessment.transferable_skills.length > 0 ? (
+                    <ul className="space-y-2 text-sm leading-relaxed text-ink">
+                      {assessment.transferable_skills.map((s, idx) => (
+                        <li className="flex gap-2" key={idx}>
+                          <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-info" />
+                          <span>{s}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-sm text-ink-muted">—</p>
+                  )}
+                </div>
+
+                {/* 8. Gaps / Risks */}
+                <div className="space-y-2 border-t border-border pt-4">
+                  <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-danger-ink">
+                    <AlertTriangle className="h-4 w-4 text-danger" />
+                    Gaps / Risks to Verify
+                  </p>
+                  {assessment && assessment.gaps_or_risks.length > 0 ? (
+                    <ul className="space-y-2 text-sm leading-relaxed text-ink">
+                      {assessment.gaps_or_risks.map((s, idx) => (
+                        <li className="flex gap-2" key={idx}>
+                          <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-danger" />
+                          <span>{s}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-sm text-ink-muted">—</p>
+                  )}
                 </div>
               </div>
-
-              {/* 6. Key Strengths */}
-              <div className="space-y-1.5 border-t border-border pt-3.5">
-                <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-success-ink">
-                  <CheckCircle2 className="h-3.5 w-3.5 text-success" />
-                  Key Strengths
-                </p>
-                {assessment && assessment.strengths.length > 0 ? (
-                  <ul className="space-y-1.5 text-xs text-ink">
-                    {assessment.strengths.map((s, idx) => (
-                      <li className="flex gap-1.5" key={idx}>
-                        <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-success" />
-                        <span>{s}</span>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-xs text-ink-muted">—</p>
-                )}
-              </div>
-
-              {/* 7. Why They Translate (Adjacent Fit) */}
-              <div className="space-y-1.5 border-t border-border pt-3.5">
-                <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-info-ink">
-                  <Compass className="h-3.5 w-3.5 text-info" />
-                  Why They Translate
-                </p>
-                {assessment && assessment.transferable_skills.length > 0 ? (
-                  <ul className="space-y-1.5 text-xs text-ink">
-                    {assessment.transferable_skills.map((s, idx) => (
-                      <li className="flex gap-1.5" key={idx}>
-                        <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-info" />
-                        <span>{s}</span>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-xs text-ink-muted">—</p>
-                )}
-              </div>
-
-              {/* 8. Gaps / Risks */}
-              <div className="space-y-1.5 border-t border-border pt-3.5">
-                <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-danger-ink">
-                  <AlertTriangle className="h-3.5 w-3.5 text-danger" />
-                  Gaps / Risks to Verify
-                </p>
-                {assessment && assessment.gaps_or_risks.length > 0 ? (
-                  <ul className="space-y-1.5 text-xs text-ink">
-                    {assessment.gaps_or_risks.map((s, idx) => (
-                      <li className="flex gap-1.5" key={idx}>
-                        <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-danger" />
-                        <span>{s}</span>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-xs text-ink-muted">—</p>
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -696,14 +687,14 @@ function CompactPillarBar({
 
   return (
     <div>
-      <div className="flex items-center justify-between text-xs">
+      <div className="flex items-center justify-between text-sm">
         <span className="font-medium text-ink">{label}</span>
         <span className="inline-flex items-center gap-1 font-semibold tabular-nums text-ink-secondary">
-          {isLeader && <Trophy className="h-3 w-3 text-success" />}
+          {isLeader && <Trophy className="h-3.5 w-3.5 text-success" />}
           {score}/{max} ({pct}%)
         </span>
       </div>
-      <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-surface-sunken">
+      <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-surface-sunken">
         <div
           className={cn('h-full rounded-full transition-all', barColor)}
           style={{ width: `${pct}%` }}
