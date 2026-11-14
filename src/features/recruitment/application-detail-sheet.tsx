@@ -4,12 +4,7 @@ import {
   ArrowLeft,
   ChevronLeft,
   ChevronRight,
-  Phone,
-  Mail,
-  MessageCircle,
   FileText,
-  ExternalLink,
-  MapPin,
   Send,
   Star,
   Calendar,
@@ -42,7 +37,6 @@ import { cn } from '@/lib/cn';
 import { formatDateTime, formatRelative, formatUGX } from '@/lib/format';
 import { candidateStorageSignedUrl, cvSignedUrl } from './recruitment-api';
 import { AVAILABILITY_LABELS, PIPELINE_STAGES, stageMeta } from './recruitment-meta';
-import { MatchBadge } from './match-badge';
 import { CandidateCompareMatrix } from './candidate-compare-matrix';
 import {
   MATCH_TIER_META,
@@ -72,8 +66,11 @@ import {
 
 /**
  * Full-page Candidate Application Review screen (`/recruitment/:vacancyId/applications/:applicationId`).
- * Stretches across the full width of the main workspace (near the edges) with a slim 2-row
- * stationary header so maximum vertical and horizontal space is available for reading.
+ * Implements Option A — Unified Single Hero Card (Workable / Ashby style):
+ * - Top navigation bar sits cleanly on the canvas outside the card
+ * - Single unified Hero Card with Candidate Identity on top and the tinted AI Summary box inside the bottom half
+ * - Clean 24px bold dark-ink section headings on the canvas without heavy banner blocks
+ * - Full-width stacked 4-pillar & evidence cards with 16px (`text-md`) dark-ink body text
  */
 export function ApplicationReviewPage() {
   const { vacancyId, applicationId } = useParams<{
@@ -86,7 +83,7 @@ export function ApplicationReviewPage() {
   }
 
   return (
-    <div className="-mx-2 -mt-3 pb-20 sm:-mx-4 lg:-mx-5">
+    <div className="-mx-2 -mt-2 pb-20 sm:-mx-4 lg:-mx-5">
       <ApplicationDetailWorkspace
         applicationId={applicationId}
         isFullPage
@@ -123,6 +120,32 @@ export function ApplicationDetailSheet({
   );
 }
 
+const AI_BOX_STYLES: Record<
+  ApplicationMatchTier,
+  { box: string; pill: string }
+> = {
+  strong: {
+    box: 'border border-success/30 bg-success-soft/75',
+    pill: 'bg-success text-primary-ink',
+  },
+  adjacent: {
+    box: 'border border-info/25 bg-info-soft/85',
+    pill: 'bg-info text-primary-ink',
+  },
+  partial: {
+    box: 'border border-warning/30 bg-warning-soft/80',
+    pill: 'bg-warning text-primary-ink',
+  },
+  low: {
+    box: 'border border-danger/30 bg-danger-soft/75',
+    pill: 'bg-danger text-primary-ink',
+  },
+  unscored: {
+    box: 'border border-border-strong bg-surface-sunken/70',
+    pill: 'bg-surface border border-border-strong text-ink',
+  },
+};
+
 function ApplicationDetailWorkspace({
   applicationId,
   vacancyId,
@@ -149,15 +172,25 @@ function ApplicationDetailWorkspace({
   const updateCandidate = useUpdateCandidate(application?.candidate_id ?? '');
 
   const [note, setNote] = useState('');
+  const [pendingReject, setPendingReject] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
   const [newInterviewAt, setNewInterviewAt] = useState('');
   const [newInterviewMode, setNewInterviewMode] = useState('');
 
+  // Override editor state inside the Unified Hero Card
+  const [editingVerdict, setEditingVerdict] = useState(false);
+  const [tierDraft, setTierDraft] = useState<ApplicationMatchTier>('adjacent');
+  const [scoreDraft, setScoreDraft] = useState<string>('');
+  const [summaryDraft, setSummaryDraft] = useState<string>('');
+  const [strengthsDraft, setStrengthsDraft] = useState<string>('');
+  const [transferableDraft, setTransferableDraft] = useState<string>('');
+  const [gapsDraft, setGapsDraft] = useState<string>('');
+
   if (isLoading || !application) {
     return (
       <div className="space-y-4">
-        <Skeleton className="h-28 w-full rounded-card" />
-        <Skeleton className="h-24 w-full rounded-card" />
+        <Skeleton className="h-12 w-full rounded-card" />
+        <Skeleton className="h-56 w-full rounded-card" />
         <Skeleton className="h-64 w-full rounded-card" />
       </div>
     );
@@ -171,7 +204,6 @@ function ApplicationDetailWorkspace({
 
   const contact = application.candidateContact;
   const candidate = application.candidate;
-  const meta = stageMeta(application.stage);
   const assessment = parseAiAssessment(application.ai_assessment);
   const prepQuestions = assessment?.interview_questions ?? [];
   const parsedNotes = parseApplicationNotes(application.notes);
@@ -219,12 +251,12 @@ function ApplicationDetailWorkspace({
     toast.success('Interview scheduled');
   };
 
-  const onMove = async (stage: string) => {
-    const reason = stage === 'rejected' ? rejectReason.trim() || undefined : undefined;
-    if (stage === 'rejected' && !reason) {
-      toast.error('Please enter a reason before rejecting');
+  const onStageSelect = async (stage: string) => {
+    if (stage === 'rejected') {
+      setPendingReject(true);
       return;
     }
+    setPendingReject(false);
     if (stage === 'hired') {
       await moveStage.mutateAsync({ id: applicationId, stage });
       if (vacancy && vacancy.status !== 'closed') {
@@ -238,17 +270,24 @@ function ApplicationDetailWorkspace({
       }
       return;
     }
-    if (stage === 'rejected') {
-      await moveStage.mutateAsync({
-        id: applicationId,
-        stage: 'rejected',
-        ...(reason ? { reason } : {}),
-      });
-    } else {
-      await moveStage.mutateAsync({ id: applicationId, stage: stage as ApplicationStage });
-    }
-    setRejectReason('');
+    await moveStage.mutateAsync({ id: applicationId, stage: stage as ApplicationStage });
     toast.success(`Moved to ${stageMeta(stage as ApplicationStage).label}`);
+  };
+
+  const confirmReject = async () => {
+    const reason = rejectReason.trim();
+    if (!reason) {
+      toast.error('Please enter a reason before rejecting');
+      return;
+    }
+    await moveStage.mutateAsync({
+      id: applicationId,
+      stage: 'rejected',
+      reason,
+    });
+    setRejectReason('');
+    setPendingReject(false);
+    toast.success('Moved to Rejected');
   };
 
   const handleRunEvaluation = async (forceReparseCv = false) => {
@@ -260,38 +299,168 @@ function ApplicationDetailWorkspace({
     }
   };
 
+  const startEditVerdict = () => {
+    setTierDraft(application.match_tier ?? 'adjacent');
+    setScoreDraft(application.match_score != null ? String(application.match_score) : '');
+    setSummaryDraft(assessment?.summary ?? '');
+    setStrengthsDraft((assessment?.strengths ?? []).join('\n'));
+    setTransferableDraft((assessment?.transferable_skills ?? []).join('\n'));
+    setGapsDraft((assessment?.gaps_or_risks ?? []).join('\n'));
+    setEditingVerdict(true);
+  };
+
+  const handleSaveVerdict = async () => {
+    const parsedScore = scoreDraft.trim() === '' ? null : Number(scoreDraft);
+    await saveOverride.mutateAsync({
+      applicationId,
+      override: {
+        currentAssessment: assessment,
+        currentTier: application.match_tier,
+        currentScore: application.match_score,
+        nextTier: tierDraft,
+        nextScore: parsedScore != null && Number.isFinite(parsedScore) ? parsedScore : null,
+        summary: summaryDraft,
+        strengths: strengthsDraft.split('\n'),
+        transferableSkills: transferableDraft.split('\n'),
+        gapsOrRisks: gapsDraft.split('\n'),
+        interviewQuestions: assessment?.interview_questions ?? [],
+      },
+    });
+    setEditingVerdict(false);
+    toast.success('Assessment updated');
+  };
+
+  // Build a single clean subtitle line without repeating experience multiple times
+  const subtitleParts: string[] = [];
+  if (candidate?.headline) subtitleParts.push(candidate.headline);
+  if (parsedNotes.location) subtitleParts.push(parsedNotes.location);
+  if (
+    candidate?.years_experience != null &&
+    !(candidate.headline ?? '').toLowerCase().includes('yr')
+  ) {
+    subtitleParts.push(`${candidate.years_experience} yrs exp`);
+  }
+  subtitleParts.push(`Applied ${formatRelative(application.applied_at)}`);
+
+  // Contact & document text links (Call · WhatsApp · Email · LinkedIn · Cover Letter)
+  const contactLinks: { label: string; href?: string; onClick?: () => void }[] = [];
+  if (contact?.phone_e164) {
+    contactLinks.push({ label: 'Call', href: `tel:${contact.phone_e164}` });
+    contactLinks.push({
+      label: 'WhatsApp',
+      href: `https://wa.me/${contact.phone_e164.replace('+', '')}`,
+    });
+  }
+  if (contact?.email) {
+    contactLinks.push({ label: 'Email', href: `mailto:${contact.email}` });
+  }
+  if (parsedNotes.linkedInUrl) {
+    contactLinks.push({ label: 'LinkedIn', href: parsedNotes.linkedInUrl });
+  }
+  if (parsedNotes.coverLetterPath) {
+    contactLinks.push({
+      label: 'Cover Letter PDF',
+      onClick: () => void openCoverLetter(),
+    });
+  }
+
+  const tierStyle = application.match_tier
+    ? AI_BOX_STYLES[application.match_tier]
+    : AI_BOX_STYLES.unscored;
+
+  const badgeLabel =
+    application.match_tier && application.match_tier !== 'unscored'
+      ? `${application.match_score != null ? `${Math.round(application.match_score)}% ` : ''}${MATCH_TIER_META[application.match_tier].label}`
+      : application.match_tier === 'unscored'
+        ? 'Manual Read'
+        : 'Not Evaluated Yet';
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* =====================================================================
-          SLIM 2-ROW STATIONARY HEADER — STRETCHED FULL WIDTH
+          1. TOP NAVIGATION BAR (OUTSIDE THE CARD, SLIM & STICKY ON CANVAS)
          ===================================================================== */}
-      <div className="sticky top-0 z-20 bg-canvas/95 pt-1 pb-2 backdrop-blur-sm">
-        <div className="rounded-card border-2 border-border-strong bg-surface px-5 py-3 shadow-sm">
-          {/* ROW 1: Back + Name + Badges +Headline (Left) | Compare + Prev/Next (Pinned Right, Never Wraps) */}
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2.5">
-              {isFullPage && (
+      {isFullPage && (
+        <div className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-3 border-b border-border-strong bg-canvas/95 py-3 backdrop-blur-sm">
+          <button
+            className="inline-flex items-center gap-2 text-md font-semibold text-ink transition-colors hover:text-primary"
+            onClick={() => void navigate(`/recruitment/${vacancyId}`)}
+            type="button"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            <span>Back to {vacancy?.title ?? 'vacancy pipeline'}</span>
+          </button>
+
+          <div className="flex items-center gap-4">
+            {ordered.length >= 2 && (
+              <button
+                className="inline-flex items-center gap-1.5 rounded-control border border-border-strong bg-surface px-3.5 py-1.5 text-base font-semibold text-ink transition-colors hover:bg-surface-sunken"
+                onClick={scrollToCompare}
+                type="button"
+              >
+                <Scale className="h-4 w-4 text-primary" />
+                Compare candidates
+              </button>
+            )}
+
+            {ordered.length > 1 && currentIndex >= 0 && (
+              <div className="flex items-center gap-2 text-md font-medium text-ink">
                 <button
-                  className="inline-flex shrink-0 items-center gap-1 rounded-control px-2 py-1 text-base font-bold text-ink transition-colors hover:bg-surface-sunken"
-                  onClick={() => void navigate(`/recruitment/${vacancyId}`)}
+                  className={cn(
+                    'inline-flex items-center gap-1 rounded-control px-2 py-1 transition-colors',
+                    prevApp
+                      ? 'text-ink hover:bg-surface-sunken'
+                      : 'cursor-not-allowed text-ink-muted/60',
+                  )}
+                  disabled={!prevApp}
+                  onClick={() =>
+                    prevApp &&
+                    void navigate(`/recruitment/${vacancyId}/applications/${prevApp.id}`)
+                  }
                   type="button"
                 >
-                  <ArrowLeft className="h-4 w-4 text-primary" />
-                  <span className="max-w-[180px] truncate">{vacancy?.title ?? 'Pipeline'}</span>
+                  <ChevronLeft className="h-4 w-4" />
+                  Prev
                 </button>
-              )}
+                <span className="font-bold tabular-nums text-ink">
+                  {currentIndex + 1} / {ordered.length}
+                </span>
+                <button
+                  className={cn(
+                    'inline-flex items-center gap-1 rounded-control px-2 py-1 transition-colors',
+                    nextApp
+                      ? 'text-ink hover:bg-surface-sunken'
+                      : 'cursor-not-allowed text-ink-muted/60',
+                  )}
+                  disabled={!nextApp}
+                  onClick={() =>
+                    nextApp &&
+                    void navigate(`/recruitment/${vacancyId}/applications/${nextApp.id}`)
+                  }
+                  type="button"
+                >
+                  Next
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
-              {isFullPage && <span className="text-border-strong">|</span>}
-
-              <h1 className="font-display text-xl font-bold text-ink">
+      {/* =====================================================================
+          2. UNIFIED SINGLE HERO CARD (OPTION A — PROFILE + AI SUMMARY)
+         ===================================================================== */}
+      <div className="rounded-card border border-border-strong bg-surface p-7 shadow-2xs">
+        {/* Top Half: Candidate Identity on Left | Open CV + Stage Dropdown on Right */}
+        <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-3">
+              <h1 className="font-display text-2xl font-bold text-ink">
                 {contact?.full_name ?? 'Unnamed candidate'}
               </h1>
-              <StatusChip variant={meta.tone}>{meta.label}</StatusChip>
-              {application.match_tier && (
-                <MatchBadge score={application.match_score} tier={application.match_tier} />
-              )}
 
-              {/* Interactive Star Rating */}
+              {/* Interactive 1–5 Star Rating */}
               {candidate && (
                 <span className="inline-flex items-center gap-0.5">
                   {[1, 2, 3, 4, 5].map((n) => (
@@ -306,9 +475,9 @@ function ApplicationDetailWorkspace({
                     >
                       <Star
                         className={cn(
-                          'h-4 w-4 transition-colors',
+                          'h-5 w-5 transition-colors',
                           candidate.rating != null && candidate.rating >= n
-                            ? 'fill-current text-warning'
+                            ? 'fill-current text-primary'
                             : 'text-ink-muted',
                         )}
                       />
@@ -316,132 +485,62 @@ function ApplicationDetailWorkspace({
                   ))}
                 </span>
               )}
-
-              {candidate?.headline && (
-                <span className="hidden truncate text-base font-medium text-ink-secondary xl:inline">
-                  · {candidate.headline}
-                </span>
-              )}
             </div>
 
-            {/* Pinned Top-Right Controls: Compare + Prev / Next */}
-            {isFullPage && (
-              <div className="flex shrink-0 items-center gap-2">
-                {ordered.length >= 2 && (
-                  <Button
-                    onClick={scrollToCompare}
-                    size="sm"
-                    type="button"
-                    variant="secondary"
-                  >
-                    <Scale className="mr-1.5 h-4 w-4 text-primary" />
-                    Compare candidates
-                  </Button>
-                )}
+            {/* Single Clean Subtitle Line */}
+            <p className="mt-1.5 text-md font-medium text-ink">
+              {subtitleParts.join(' · ')}
+            </p>
 
-                {ordered.length > 1 && currentIndex >= 0 && (
-                  <div className="flex items-center gap-1">
-                    <Button
-                      disabled={!prevApp}
-                      onClick={() =>
-                        prevApp &&
-                        void navigate(`/recruitment/${vacancyId}/applications/${prevApp.id}`)
-                      }
-                      size="sm"
-                      type="button"
-                      variant="secondary"
-                    >
-                      <ChevronLeft className="mr-0.5 h-4 w-4" />
-                      Prev
-                    </Button>
-                    <span className="px-2 text-base font-bold tabular-nums text-ink">
-                      {currentIndex + 1} / {ordered.length}
-                    </span>
-                    <Button
-                      disabled={!nextApp}
-                      onClick={() =>
-                        nextApp &&
-                        void navigate(`/recruitment/${vacancyId}/applications/${nextApp.id}`)
-                      }
-                      size="sm"
-                      type="button"
-                      variant="secondary"
-                    >
-                      Next
-                      <ChevronRight className="ml-0.5 h-4 w-4" />
-                    </Button>
-                  </div>
-                )}
+            {/* Clean Inline Contact Links (`Call · WhatsApp · Email · LinkedIn`) */}
+            {contactLinks.length > 0 && (
+              <div className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-md font-semibold text-primary">
+                {contactLinks.map((item, idx) => (
+                  <span className="inline-flex items-center gap-2" key={item.label}>
+                    {idx > 0 && <span className="text-ink-muted">·</span>}
+                    {item.href ? (
+                      <a
+                        className="hover:underline"
+                        href={item.href}
+                        rel="noreferrer"
+                        target="_blank"
+                      >
+                        {item.label}
+                      </a>
+                    ) : (
+                      <button
+                        className="hover:underline"
+                        onClick={item.onClick}
+                        type="button"
+                      >
+                        {item.label}
+                      </button>
+                    )}
+                  </span>
+                ))}
               </div>
             )}
           </div>
 
-          {/* ROW 2: Action Buttons & Metadata (Left) | Stage Selector Inline (Right) */}
-          <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 border-t border-border-strong pt-2.5">
-            <div className="flex flex-wrap items-center gap-2">
-              {contact?.phone_e164 && (
-                <>
-                  <QuickAction href={`tel:${contact.phone_e164}`} icon={Phone} label="Call" />
-                  <QuickAction
-                    href={`https://wa.me/${contact.phone_e164.replace('+', '')}`}
-                    icon={MessageCircle}
-                    label="WhatsApp"
-                  />
-                </>
-              )}
-              {contact?.email && (
-                <QuickAction href={`mailto:${contact.email}`} icon={Mail} label="Email" />
-              )}
+          {/* Right Side: Only [Open CV] and [Stage: New v] */}
+          <div className="flex flex-col items-end gap-2.5">
+            <div className="flex flex-wrap items-center gap-3">
               {candidate && (
-                <button
-                  className="inline-flex items-center gap-1.5 rounded-control border border-border-strong bg-surface-sunken/70 px-3 py-1 text-base font-semibold text-ink transition-colors hover:bg-primary-soft hover:text-primary"
+                <Button
+                  className="h-10 px-5 text-md font-semibold"
                   onClick={() => void downloadCv()}
                   type="button"
+                  variant="primary"
                 >
-                  <FileText className="h-4 w-4 text-primary" />
-                  CV Document
-                </button>
-              )}
-              {parsedNotes.coverLetterPath && (
-                <button
-                  className="inline-flex items-center gap-1.5 rounded-control border border-border-strong bg-surface-sunken/70 px-3 py-1 text-base font-semibold text-ink transition-colors hover:bg-primary-soft hover:text-primary"
-                  onClick={() => void openCoverLetter()}
-                  type="button"
-                >
-                  <FileText className="h-4 w-4 text-primary" />
-                  Cover Letter PDF
-                </button>
-              )}
-              {parsedNotes.linkedInUrl && (
-                <QuickAction
-                  href={parsedNotes.linkedInUrl}
-                  icon={ExternalLink}
-                  label="LinkedIn"
-                />
+                  Open CV
+                </Button>
               )}
 
-              <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 pl-1 text-base font-medium text-ink">
-                {parsedNotes.location && (
-                  <span className="inline-flex items-center gap-1">
-                    <MapPin className="h-4 w-4 text-primary" />
-                    {parsedNotes.location}
+              <Select onValueChange={(v) => void onStageSelect(v)} value={application.stage}>
+                <SelectTrigger className="h-10 w-44 border-border-strong bg-surface text-md font-semibold text-ink">
+                  <span>
+                    Stage: <SelectValue />
                   </span>
-                )}
-                {candidate?.years_experience != null && (
-                  <span className="font-bold">· {candidate.years_experience} yrs exp</span>
-                )}
-                <span className="text-ink-secondary">
-                  · Applied {formatRelative(application.applied_at)}
-                </span>
-              </div>
-            </div>
-
-            {/* Stage Selector + Inline Reject Reason */}
-            <div className="flex shrink-0 items-center gap-2">
-              <span className="text-base font-bold uppercase tracking-wide text-ink">Stage:</span>
-              <Select onValueChange={(v) => void onMove(v)} value={application.stage}>
-                <SelectTrigger className="h-8 w-36 border-border-strong bg-surface text-base font-semibold text-ink">
-                  <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   {PIPELINE_STAGES.map((s) => (
@@ -451,278 +550,380 @@ function ApplicationDetailWorkspace({
                   ))}
                 </SelectContent>
               </Select>
-              <Input
-                className="h-8 w-48 border-border-strong bg-surface text-sm text-ink"
-                onChange={(e) => setRejectReason(e.target.value)}
-                placeholder="Rejection reason (if rejecting)"
-                value={rejectReason}
-              />
+            </div>
+
+            {/* Rejection Reason Input ONLY appears when user selects "Rejected" */}
+            {pendingReject && (
+              <div className="flex flex-wrap items-center gap-2 rounded-control border border-danger/40 bg-danger-soft/50 p-2.5">
+                <Input
+                  className="h-9 w-64 border-border-strong bg-surface text-base text-ink"
+                  onChange={(e) => setRejectReason(e.target.value)}
+                  placeholder="Enter reason for rejection…"
+                  value={rejectReason}
+                />
+                <Button onClick={() => void confirmReject()} size="sm" variant="danger">
+                  Confirm Reject
+                </Button>
+                <Button
+                  onClick={() => {
+                    setPendingReject(false);
+                    setRejectReason('');
+                  }}
+                  size="sm"
+                  variant="ghost"
+                >
+                  Cancel
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Thin Horizontal Divider inside the Unified Card */}
+        <hr className="my-6 border-border-strong" />
+
+        {/* Bottom Half of the Unified Card: Softly Tinted AI Summary Box */}
+        <div className={cn('rounded-control p-5', tierStyle.box)}>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <span
+                className={cn(
+                  'rounded-control px-3.5 py-1 text-base font-bold tabular-nums shadow-2xs',
+                  tierStyle.pill,
+                )}
+              >
+                {badgeLabel}
+              </span>
+              <span className="font-display text-md font-bold text-ink">
+                AI summary says:
+              </span>
+              {assessment?.overridden_by_name && (
+                <span className="rounded-pill bg-surface px-2.5 py-0.5 text-xs font-bold text-primary">
+                  Adjusted by {assessment.overridden_by_name}
+                </span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              {!editingVerdict && (
+                <button
+                  className="rounded-control border border-border-strong bg-surface px-3.5 py-1.5 text-base font-semibold text-ink transition-colors hover:bg-surface-sunken"
+                  onClick={startEditVerdict}
+                  type="button"
+                >
+                  Edit
+                </button>
+              )}
+              <button
+                className="inline-flex items-center gap-1.5 rounded-control border border-border-strong bg-surface px-3.5 py-1.5 text-base font-semibold text-ink transition-colors hover:bg-surface-sunken disabled:opacity-50"
+                disabled={evaluateApp.isPending}
+                onClick={() => void handleRunEvaluation(false)}
+                type="button"
+              >
+                <RefreshCw
+                  className={cn('h-3.5 w-3.5', evaluateApp.isPending && 'animate-spin')}
+                />
+                {evaluateApp.isPending
+                  ? 'Evaluating…'
+                  : assessment
+                    ? 'Re-evaluate'
+                    : 'Evaluate with AI'}
+              </button>
             </div>
           </div>
+
+          <p className="mt-3 text-md font-medium leading-relaxed text-ink">
+            {assessment?.summary ??
+              'Not evaluated yet. Click Re-evaluate to score this candidate’s CV, cover letter, and screening answers against the job description.'}
+          </p>
+
+          {/* Inline Override Editor when Edit is clicked */}
+          {editingVerdict && (
+            <div className="mt-5 space-y-4 rounded-card border border-border-strong bg-surface p-5">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <Label className="text-sm font-semibold text-ink">Match tier</Label>
+                  <Select
+                    onValueChange={(v) => setTierDraft(v as ApplicationMatchTier)}
+                    value={tierDraft}
+                  >
+                    <SelectTrigger className="mt-1 bg-surface text-base">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(Object.keys(MATCH_TIER_META) as ApplicationMatchTier[]).map((t) => (
+                        <SelectItem key={t} value={t}>
+                          {MATCH_TIER_META[t].label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-sm font-semibold text-ink">Match score (0–100%)</Label>
+                  <Input
+                    className="mt-1 bg-surface text-base"
+                    disabled={tierDraft === 'unscored'}
+                    max={100}
+                    min={0}
+                    onChange={(e) => setScoreDraft(e.target.value)}
+                    placeholder="e.g. 82"
+                    type="number"
+                    value={scoreDraft}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <Label className="text-sm font-semibold text-ink">Recruiter brief / summary</Label>
+                <Textarea
+                  className="mt-1 min-h-0 bg-surface text-md"
+                  onChange={(e) => setSummaryDraft(e.target.value)}
+                  placeholder="2–3 sentence summary of how this candidate fits the role…"
+                  rows={2}
+                  value={summaryDraft}
+                />
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+                <div>
+                  <Label className="text-sm font-semibold text-ink">Strengths (one per line)</Label>
+                  <Textarea
+                    className="mt-1 min-h-0 bg-surface text-base"
+                    onChange={(e) => setStrengthsDraft(e.target.value)}
+                    rows={3}
+                    value={strengthsDraft}
+                  />
+                </div>
+                <div>
+                  <Label className="text-sm font-semibold text-ink">
+                    Transferable / Adjacent Fit (one per line)
+                  </Label>
+                  <Textarea
+                    className="mt-1 min-h-0 bg-surface text-base"
+                    onChange={(e) => setTransferableDraft(e.target.value)}
+                    rows={3}
+                    value={transferableDraft}
+                  />
+                </div>
+                <div>
+                  <Label className="text-sm font-semibold text-ink">
+                    Gaps or Risks (one per line)
+                  </Label>
+                  <Textarea
+                    className="mt-1 min-h-0 bg-surface text-base"
+                    onChange={(e) => setGapsDraft(e.target.value)}
+                    rows={3}
+                    value={gapsDraft}
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2">
+                <Button onClick={() => setEditingVerdict(false)} size="sm" variant="ghost">
+                  Cancel
+                </Button>
+                <Button
+                  disabled={saveOverride.isPending}
+                  onClick={() => void handleSaveVerdict()}
+                  size="sm"
+                  variant="primary"
+                >
+                  {saveOverride.isPending ? 'Saving…' : 'Save assessment'}
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
       {/* =====================================================================
-          TOP BANNER: EXECUTIVE AI VERDICT SUMMARY
+          SECTION 1: 1. APPLICATION & CV DETAILS (CLEAN BOLD HEADING ON CANVAS)
          ===================================================================== */}
-      <VerdictBanner
-        assessment={assessment}
-        isEvaluating={evaluateApp.isPending}
-        isSavingOverride={saveOverride.isPending}
-        matchScore={application.match_score}
-        matchTier={application.match_tier}
-        onEvaluate={handleRunEvaluation}
-        onSaveOverride={async (override) => {
-          await saveOverride.mutateAsync({ applicationId, override });
-          toast.success('Assessment updated');
-        }}
-      />
+      <section className="scroll-mt-20 space-y-4" id="section-screening-cv">
+        <h2 className="font-display text-xl font-bold text-ink">1. Application &amp; CV Details</h2>
 
-      {/* =====================================================================
-          SECTION 1: APPLICATION, SCREENING ANSWERS & CV HIGHLIGHTS (FIRST!)
-         ===================================================================== */}
-      <section className="scroll-mt-36 space-y-4" id="section-screening-cv">
-        <SectionHeading
-          number="1"
-          subtitle="What the candidate submitted: knockout screening answers, uploaded documents, and extracted CV profile."
-          title="Application, Screening Answers & CV Highlights"
-        />
-
-        <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
-          {/* Left 6 cols: Screening Question Responses + Cover Letter */}
-          <div className="space-y-5 lg:col-span-6">
-            {/* Subcard: Screening Question Responses */}
-            <div className="overflow-hidden rounded-card border border-border-strong bg-surface shadow-2xs">
-              <div className="flex items-center justify-between border-b border-border-strong bg-primary-soft px-5 py-3">
-                <h3 className="font-display text-md font-bold text-ink">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+          {/* Left 6 cols: Screening Question Responses + Documents */}
+          <div className="space-y-6 lg:col-span-6">
+            <div className="rounded-card border border-border-strong bg-surface p-6 shadow-2xs">
+              <div className="mb-4 flex items-center justify-between">
+                <h3 className="font-display text-lg font-bold text-ink">
                   Screening Question Responses
                 </h3>
-                <span className="rounded-pill bg-primary px-3 py-0.5 text-xs font-bold text-primary-ink">
+                <span className="rounded-pill bg-primary-soft px-3 py-0.5 text-sm font-bold text-primary">
                   {screeningEntries.length} answered
                 </span>
               </div>
 
-              <div className="p-5">
-                {screeningEntries.length === 0 ? (
-                  <p className="text-md font-medium text-ink-secondary">
-                    No screening questions were answered on this application.
-                  </p>
-                ) : (
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    {screeningEntries.map(([key, val]) => {
-                      const matchedQ = (vacancy?.screening_questions ?? []).find(
-                        (q) => q.id === key,
-                      );
-                      const prompt = matchedQ ? matchedQ.question : key;
-                      const answerText = formatAnswer(val);
+              {screeningEntries.length === 0 ? (
+                <p className="text-md font-medium text-ink-secondary">
+                  No screening questions were answered on this application.
+                </p>
+              ) : (
+                <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
+                  {screeningEntries.map(([key, val]) => {
+                    const matchedQ = (vacancy?.screening_questions ?? []).find(
+                      (q) => q.id === key,
+                    );
+                    const prompt = matchedQ ? matchedQ.question : key;
+                    const answerText = formatAnswer(val);
 
-                      return (
-                        <div
-                          className="rounded-control border border-border-strong bg-surface-sunken/50 p-3.5"
-                          key={key}
-                        >
-                          <p className="text-base font-semibold text-ink-secondary">{prompt}</p>
-                          <p className="mt-1 text-md font-bold text-ink">{answerText}</p>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Subcard: Cover Letter & Submitted Documents */}
-            <div className="overflow-hidden rounded-card border border-border-strong bg-surface shadow-2xs">
-              <div className="border-b border-border-strong bg-primary-soft px-5 py-3">
-                <h3 className="font-display text-md font-bold text-ink">
-                  Cover Letter &amp; Submitted Documents
-                </h3>
-              </div>
-
-              <div className="p-5">
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  {candidate && (
-                    <div className="flex items-center justify-between gap-3 rounded-control border border-border-strong bg-surface-sunken/50 p-3.5">
-                      <div className="flex min-w-0 items-center gap-2.5">
-                        <FileText className="h-5 w-5 shrink-0 text-primary" />
-                        <div className="min-w-0">
-                          <p className="truncate text-md font-bold text-ink">Candidate CV</p>
-                          <p className="text-sm font-medium text-ink-secondary">Uploaded resume</p>
-                        </div>
+                    return (
+                      <div
+                        className="rounded-control border border-border-strong bg-surface-sunken/40 p-4"
+                        key={key}
+                      >
+                        <p className="text-base font-semibold text-ink-secondary">{prompt}</p>
+                        <p className="mt-1 text-md font-bold text-ink">{answerText}</p>
                       </div>
-                      <Button onClick={() => void downloadCv()} size="sm" variant="primary">
-                        Open CV
-                      </Button>
-                    </div>
-                  )}
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Cover Letter & Documents inside the same left column card */}
+              {(parsedNotes.coverLetterPath || parsedNotes.cleanCoverNote) && (
+                <div className="mt-6 border-t border-border-strong pt-5">
+                  <h4 className="mb-3 font-display text-md font-bold text-ink">
+                    Cover Letter &amp; Application Note
+                  </h4>
 
                   {parsedNotes.coverLetterPath && (
-                    <div className="flex items-center justify-between gap-3 rounded-control border border-border-strong bg-surface-sunken/50 p-3.5">
+                    <div className="flex items-center justify-between gap-3 rounded-control border border-border-strong bg-surface-sunken/40 p-3.5">
                       <div className="flex min-w-0 items-center gap-2.5">
                         <FileText className="h-5 w-5 shrink-0 text-primary" />
                         <div className="min-w-0">
                           <p className="truncate text-md font-bold text-ink">
                             {parsedNotes.coverLetterFilename ?? 'Cover Letter PDF'}
                           </p>
-                          <p className="text-sm font-medium text-ink-secondary">Cover letter</p>
+                          <p className="text-sm font-medium text-ink-secondary">
+                            Uploaded cover letter document
+                          </p>
                         </div>
                       </div>
                       <Button onClick={() => void openCoverLetter()} size="sm" variant="primary">
-                        Open
+                        Open Cover Letter
                       </Button>
                     </div>
                   )}
-                </div>
 
-                {parsedNotes.cleanCoverNote ? (
-                  <div className="mt-3.5 rounded-control border border-border-strong bg-surface-sunken/40 p-3.5">
-                    <p className="mb-1 text-sm font-bold uppercase tracking-wide text-ink">
-                      Written Cover Note
-                    </p>
-                    <p className="whitespace-pre-line text-md leading-relaxed text-ink">
+                  {parsedNotes.cleanCoverNote && (
+                    <p className="mt-3 whitespace-pre-line text-md leading-relaxed text-ink">
                       {parsedNotes.cleanCoverNote}
                     </p>
-                  </div>
-                ) : !parsedNotes.coverLetterPath ? (
-                  <p className="mt-3 text-md font-medium text-ink-secondary">
-                    No written cover note provided.
-                  </p>
-                ) : null}
-              </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Right 6 cols: Extracted CV Profile & Candidate Skills */}
-          <div className="space-y-5 lg:col-span-6">
-            <div className="overflow-hidden rounded-card border border-border-strong bg-surface shadow-2xs">
-              <div className="flex items-center gap-2 border-b border-border-strong bg-primary-soft px-5 py-3">
-                <Sparkles className="h-4 w-4 text-primary" />
-                <h3 className="font-display text-md font-bold text-ink">
-                  CV Highlights &amp; Practical Facts
-                </h3>
+          {/* Right 6 cols: CV Highlights & Practical Facts */}
+          <div className="space-y-6 lg:col-span-6">
+            <div className="rounded-card border border-border-strong bg-surface p-6 shadow-2xs space-y-5">
+              <h3 className="font-display text-lg font-bold text-ink">
+                CV Highlights &amp; Practical Facts
+              </h3>
+
+              {/* Practical Facts Row */}
+              <div className="grid grid-cols-2 gap-3 rounded-control border border-border-strong bg-surface-sunken/40 p-4 sm:grid-cols-4">
+                <div>
+                  <span className="text-xs font-bold uppercase tracking-wide text-ink-secondary">
+                    Experience
+                  </span>
+                  <p className="mt-0.5 text-md font-bold text-ink">
+                    {candidate?.years_experience != null
+                      ? `${candidate.years_experience} years`
+                      : 'Not stated'}
+                  </p>
+                </div>
+                <div>
+                  <span className="text-xs font-bold uppercase tracking-wide text-ink-secondary">
+                    Location
+                  </span>
+                  <p className="mt-0.5 text-md font-bold text-ink">
+                    {parsedNotes.location ?? 'Not stated'}
+                  </p>
+                </div>
+                <div>
+                  <span className="text-xs font-bold uppercase tracking-wide text-ink-secondary">
+                    Salary Expect.
+                  </span>
+                  <p className="mt-0.5 text-md font-bold text-ink">
+                    {candidate?.salary_expectation_ugx != null &&
+                    candidate.salary_expectation_ugx > 0
+                      ? formatUGX(BigInt(candidate.salary_expectation_ugx))
+                      : 'Not stated'}
+                  </p>
+                </div>
+                <div>
+                  <span className="text-xs font-bold uppercase tracking-wide text-ink-secondary">
+                    Availability
+                  </span>
+                  <p className="mt-0.5 text-md font-bold text-ink">
+                    {candidate?.availability
+                      ? (AVAILABILITY_LABELS[candidate.availability] ?? candidate.availability)
+                      : 'Not stated'}
+                  </p>
+                </div>
               </div>
 
-              <div className="space-y-4 p-5">
-                {/* Practical Facts Grid (4 columns across so it stays compact vertically) */}
-                <div className="grid grid-cols-2 gap-3 rounded-control border border-border-strong bg-surface-sunken/50 p-3.5 sm:grid-cols-4">
-                  <div>
-                    <span className="text-xs font-semibold uppercase tracking-wide text-ink-secondary">
-                      Experience
-                    </span>
-                    <p className="mt-0.5 text-md font-bold text-ink">
-                      {candidate?.years_experience != null
-                        ? `${candidate.years_experience} years`
-                        : 'Not stated'}
-                    </p>
-                  </div>
-                  <div>
-                    <span className="text-xs font-semibold uppercase tracking-wide text-ink-secondary">
-                      Location
-                    </span>
-                    <p className="mt-0.5 text-md font-bold text-ink">
-                      {parsedNotes.location ?? 'Not stated'}
-                    </p>
-                  </div>
-                  <div>
-                    <span className="text-xs font-semibold uppercase tracking-wide text-ink-secondary">
-                      Salary Expect.
-                    </span>
-                    <p className="mt-0.5 text-md font-bold text-ink">
-                      {candidate?.salary_expectation_ugx != null &&
-                      candidate.salary_expectation_ugx > 0
-                        ? formatUGX(BigInt(candidate.salary_expectation_ugx))
-                        : 'Not stated'}
-                    </p>
-                  </div>
-                  <div>
-                    <span className="text-xs font-semibold uppercase tracking-wide text-ink-secondary">
-                      Availability
-                    </span>
-                    <p className="mt-0.5 text-md font-bold text-ink">
-                      {candidate?.availability
-                        ? (AVAILABILITY_LABELS[candidate.availability] ?? candidate.availability)
-                        : 'Not stated'}
-                    </p>
+              {parsedCv && parsedCv.readability !== 'unreadable' && parsedCv.summary && (
+                <div>
+                  <p className="mb-1.5 text-sm font-bold uppercase tracking-wide text-ink">
+                    Extracted CV Summary
+                  </p>
+                  <p className="text-md leading-relaxed text-ink">{parsedCv.summary}</p>
+                </div>
+              )}
+
+              {parsedCv && parsedCv.qualifications.length > 0 && (
+                <div>
+                  <p className="mb-2 text-sm font-bold uppercase tracking-wide text-ink">
+                    Qualifications &amp; Certifications
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {parsedCv.qualifications.map((q) => (
+                      <span
+                        className="rounded-pill border border-primary/30 bg-primary-soft px-3.5 py-1 text-base font-bold text-primary"
+                        key={q}
+                      >
+                        {q}
+                      </span>
+                    ))}
                   </div>
                 </div>
+              )}
 
-                {parsedCv && parsedCv.readability !== 'unreadable' && parsedCv.summary && (
-                  <div>
-                    <p className="mb-1 text-sm font-bold uppercase tracking-wide text-ink">
-                      Extracted CV Summary
-                    </p>
-                    <p className="text-md leading-relaxed text-ink">{parsedCv.summary}</p>
+              {candidate && candidate.skills.length > 0 && (
+                <div>
+                  <p className="mb-2 text-sm font-bold uppercase tracking-wide text-ink">
+                    Skills ({candidate.skills.length})
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {candidate.skills.map((s) => (
+                      <span
+                        className="rounded-pill border border-border-strong bg-surface-sunken px-3.5 py-1 text-base font-semibold text-ink"
+                        key={s}
+                      >
+                        {s}
+                      </span>
+                    ))}
                   </div>
-                )}
-
-                {parsedCv && parsedCv.qualifications.length > 0 && (
-                  <div>
-                    <p className="mb-1.5 text-sm font-bold uppercase tracking-wide text-ink">
-                      Qualifications &amp; Certifications
-                    </p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {parsedCv.qualifications.map((q) => (
-                        <span
-                          className="rounded-pill border border-primary/30 bg-primary-soft px-3 py-0.5 text-base font-bold text-primary"
-                          key={q}
-                        >
-                          {q}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {parsedCv && parsedCv.industries.length > 0 && (
-                  <div>
-                    <p className="mb-1.5 text-sm font-bold uppercase tracking-wide text-ink">
-                      Industries Worked In
-                    </p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {parsedCv.industries.map((ind) => (
-                        <span
-                          className="rounded-pill border border-border-strong bg-surface-sunken px-3 py-0.5 text-base font-semibold text-ink"
-                          key={ind}
-                        >
-                          {ind}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {candidate && candidate.skills.length > 0 && (
-                  <div>
-                    <p className="mb-1.5 text-sm font-bold uppercase tracking-wide text-ink">
-                      Skills ({candidate.skills.length})
-                    </p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {candidate.skills.map((s) => (
-                        <span
-                          className="rounded-pill border border-border-strong bg-surface-sunken px-3 py-0.5 text-base font-semibold text-ink"
-                          key={s}
-                        >
-                          {s}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
       </section>
 
       {/* =====================================================================
-          SECTION 2: DEEP AI MATCH BREAKDOWN & TRANSFERABLE EVIDENCE
+          SECTION 2: 2. AI MATCH BREAKDOWN & TRANSFERABLE EVIDENCE
          ===================================================================== */}
-      <section className="scroll-mt-36 space-y-4" id="section-ai-match">
-        <SectionHeading
-          number="2"
-          subtitle="Full-width 4-pillar scoring breakdown and direct evidence for strengths, transferable skills, and interview gaps."
-          title="AI Match Breakdown & Transferable Evidence"
-        />
+      <section className="scroll-mt-20 space-y-4" id="section-ai-match">
+        <h2 className="font-display text-xl font-bold text-ink">
+          2. AI Match Breakdown &amp; Transferable Evidence
+        </h2>
 
         <MatchBreakdownSection
           assessment={assessment}
@@ -732,16 +933,14 @@ function ApplicationDetailWorkspace({
       </section>
 
       {/* =====================================================================
-          SECTION 3: INTERVIEW PREP & SCHEDULING
+          SECTION 3: 3. INTERVIEW PREP & SCHEDULING
          ===================================================================== */}
-      <section className="scroll-mt-36 space-y-4" id="section-interview-prep">
-        <SectionHeading
-          number="3"
-          subtitle="Tailored questions to probe missing details or verify claims during the interview, plus interview scheduling."
-          title="Interview Prep & Scheduling"
-        />
+      <section className="scroll-mt-20 space-y-4" id="section-interview-prep">
+        <h2 className="font-display text-xl font-bold text-ink">
+          3. Interview Prep &amp; Scheduling
+        </h2>
 
-        <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
           <div className="lg:col-span-7">
             <InterviewPrepSection
               applicationId={applicationId}
@@ -760,98 +959,92 @@ function ApplicationDetailWorkspace({
           </div>
 
           <div className="lg:col-span-5">
-            <div className="overflow-hidden rounded-card border border-border-strong bg-surface shadow-2xs">
-              <div className="border-b border-border-strong bg-primary-soft px-5 py-3">
-                <h3 className="font-display text-md font-bold text-ink">
-                  Scheduled Interviews &amp; Feedback
-                </h3>
+            <div className="rounded-card border border-border-strong bg-surface p-6 shadow-2xs">
+              <h3 className="mb-4 font-display text-lg font-bold text-ink">
+                Scheduled Interviews &amp; Feedback
+              </h3>
+
+              <div className="space-y-3">
+                {(interviews ?? []).map((interview) => (
+                  <div
+                    className="rounded-control border border-border-strong bg-surface-sunken/40 p-4"
+                    key={interview.id}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="inline-flex items-center gap-1.5 text-md font-bold text-ink">
+                        <Calendar className="h-4 w-4 text-primary" />
+                        {interview.scheduled_at
+                          ? formatDateTime(interview.scheduled_at)
+                          : 'No time set'}
+                      </span>
+                      <StatusChip variant="neutral">{interview.mode ?? 'In person'}</StatusChip>
+                    </div>
+                    {interview.outcome && (
+                      <p className="mt-1.5 text-base font-semibold text-ink">
+                        Outcome: {interview.outcome}
+                      </p>
+                    )}
+                    {interview.feedback && (
+                      <p className="mt-1.5 text-md text-ink">{interview.feedback}</p>
+                    )}
+                    {interview.rating != null && interview.rating > 0 && (
+                      <p className="mt-1 text-sm font-medium text-ink-secondary">
+                        Rated {interview.rating} / 5
+                      </p>
+                    )}
+                    {!interview.feedback && !interview.outcome && (
+                      <FeedbackForm
+                        interviewId={interview.id}
+                        onRecord={recordFeedback.mutateAsync}
+                      />
+                    )}
+                  </div>
+                ))}
+                {(interviews ?? []).length === 0 && (
+                  <p className="text-md font-medium text-ink-secondary">
+                    No interviews scheduled yet.
+                  </p>
+                )}
               </div>
 
-              <div className="p-5">
-                <div className="space-y-3">
-                  {(interviews ?? []).map((interview) => (
-                    <div
-                      className="rounded-control border border-border-strong bg-surface-sunken/50 p-4"
-                      key={interview.id}
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="inline-flex items-center gap-1.5 text-md font-bold text-ink">
-                          <Calendar className="h-4 w-4 text-primary" />
-                          {interview.scheduled_at
-                            ? formatDateTime(interview.scheduled_at)
-                            : 'No time set'}
-                        </span>
-                        <span className="rounded-pill border border-border-strong bg-surface px-3 py-0.5 text-sm font-semibold text-ink">
-                          {interview.mode ?? 'In person'}
-                        </span>
-                      </div>
-                      {interview.outcome && (
-                        <p className="mt-1.5 text-base font-semibold text-ink">
-                          Outcome: {interview.outcome}
-                        </p>
-                      )}
-                      {interview.feedback && (
-                        <p className="mt-1.5 text-md text-ink">{interview.feedback}</p>
-                      )}
-                      {interview.rating != null && interview.rating > 0 && (
-                        <p className="mt-1 text-sm font-medium text-ink-secondary">
-                          Rated {interview.rating} / 5
-                        </p>
-                      )}
-                      {!interview.feedback && !interview.outcome && (
-                        <FeedbackForm
-                          interviewId={interview.id}
-                          onRecord={recordFeedback.mutateAsync}
-                        />
-                      )}
-                    </div>
-                  ))}
-                  {(interviews ?? []).length === 0 && (
-                    <p className="text-md font-medium text-ink-secondary">
-                      No interviews scheduled yet.
-                    </p>
-                  )}
-                </div>
-
-                <div className="mt-5 border-t border-border-strong pt-4">
-                  <h4 className="mb-2.5 text-base font-bold uppercase tracking-wide text-ink">
-                    Schedule a New Interview
-                  </h4>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <div>
-                      <Label className="text-sm font-semibold text-ink">Date &amp; Time</Label>
-                      <Input
-                        className="mt-1 border-border-strong text-base"
-                        onChange={(e) => setNewInterviewAt(e.target.value)}
-                        type="datetime-local"
-                        value={newInterviewAt}
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-sm font-semibold text-ink">Mode</Label>
-                      <Select onValueChange={setNewInterviewMode} value={newInterviewMode}>
-                        <SelectTrigger className="mt-1 border-border-strong text-base">
-                          <SelectValue placeholder="In person" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="in_person">In person</SelectItem>
-                          <SelectItem value="video">Video call</SelectItem>
-                          <SelectItem value="phone">Phone</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
+              <div className="mt-6 border-t border-border-strong pt-5">
+                <h4 className="mb-3 font-display text-md font-bold text-ink">
+                  Schedule a New Interview
+                </h4>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <Label className="text-sm font-semibold text-ink">Date &amp; Time</Label>
+                    <Input
+                      className="mt-1 border-border-strong text-base"
+                      onChange={(e) => setNewInterviewAt(e.target.value)}
+                      type="datetime-local"
+                      value={newInterviewAt}
+                    />
                   </div>
-                  <Button
-                    className="mt-3.5 w-full text-base font-semibold"
-                    disabled={!newInterviewAt || schedule.isPending}
-                    onClick={() => void scheduleNew()}
-                    size="sm"
-                    variant="primary"
-                  >
-                    <Calendar className="mr-1.5 h-4 w-4" />
-                    Schedule interview
-                  </Button>
+                  <div>
+                    <Label className="text-sm font-semibold text-ink">Mode</Label>
+                    <Select onValueChange={setNewInterviewMode} value={newInterviewMode}>
+                      <SelectTrigger className="mt-1 border-border-strong text-base">
+                        <SelectValue placeholder="In person" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="in_person">In person</SelectItem>
+                        <SelectItem value="video">Video call</SelectItem>
+                        <SelectItem value="phone">Phone</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
+                <Button
+                  className="mt-4 w-full text-base font-semibold"
+                  disabled={!newInterviewAt || schedule.isPending}
+                  onClick={() => void scheduleNew()}
+                  size="sm"
+                  variant="primary"
+                >
+                  <Calendar className="mr-1.5 h-4 w-4" />
+                  Schedule interview
+                </Button>
               </div>
             </div>
           </div>
@@ -859,17 +1052,15 @@ function ApplicationDetailWorkspace({
       </section>
 
       {/* =====================================================================
-          SECTION 4: TEAM NOTES & ACTIVITY LOG
+          SECTION 4: 4. TEAM NOTES & ACTIVITY LOG
          ===================================================================== */}
-      <section className="scroll-mt-36 space-y-4" id="section-notes">
-        <SectionHeading
-          number="4"
-          subtitle="Internal team comments and stage movement history for this applicant."
-          title="Team Notes & Activity Log"
-        />
+      <section className="scroll-mt-20 space-y-4" id="section-notes">
+        <h2 className="font-display text-xl font-bold text-ink">
+          4. Team Notes &amp; Activity Log
+        </h2>
 
-        <div className="rounded-card border border-border-strong bg-surface p-5 shadow-2xs">
-          <div className="mb-4 flex gap-2.5">
+        <div className="rounded-card border border-border-strong bg-surface p-6 shadow-2xs">
+          <div className="mb-5 flex gap-2.5">
             <Textarea
               className="min-h-0 border-border-strong text-md text-ink"
               onChange={(e) => setNote(e.target.value)}
@@ -908,15 +1099,13 @@ function ApplicationDetailWorkspace({
       </section>
 
       {/* =====================================================================
-          SECTION 5: SIDE-BY-SIDE CANDIDATE COMPARISON (2–3 APPLICANTS)
+          SECTION 5: 5. COMPARE CANDIDATES SIDE-BY-SIDE
          ===================================================================== */}
       {ordered.length >= 2 && (
-        <section className="scroll-mt-36 space-y-4" id="section-compare">
-          <SectionHeading
-            number="5"
-            subtitle="Pick 1 or 2 other applicants from this vacancy to compare side-by-side against this candidate."
-            title="Compare Candidates Side-by-Side"
-          />
+        <section className="scroll-mt-20 space-y-4" id="section-compare">
+          <h2 className="font-display text-xl font-bold text-ink">
+            5. Compare Candidates Side-by-Side
+          </h2>
 
           <CandidateCompareMatrix
             applications={ordered}
@@ -925,314 +1114,6 @@ function ApplicationDetailWorkspace({
             vacancyId={vacancyId}
           />
         </section>
-      )}
-    </div>
-  );
-}
-
-/**
- * Solid Filled JantaHR Petrol-Teal Section Header Banner (`bg-primary text-primary-ink`)
- * so every major section on the page has unmistakable visual separation and contrast.
- */
-function SectionHeading({
-  number,
-  title,
-  subtitle,
-}: {
-  number: string;
-  title: string;
-  subtitle: string;
-}) {
-  return (
-    <div className="flex items-center gap-3.5 rounded-card bg-primary px-5 py-3 text-primary-ink shadow-xs">
-      <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-highlight font-display text-md font-bold text-highlight-ink">
-        {number}
-      </span>
-      <div className="min-w-0">
-        <h2 className="font-display text-lg font-bold text-primary-ink">{title}</h2>
-        <p className="text-base font-medium text-primary-ink/90">{subtitle}</p>
-      </div>
-    </div>
-  );
-}
-
-const TIER_BANNER_STYLES: Record<
-  ApplicationMatchTier,
-  { wrapper: string; headerBar: string; scoreBox: string }
-> = {
-  strong: {
-    wrapper: 'border-2 border-success bg-surface',
-    headerBar: 'bg-success-soft border-b border-success/40 text-success-ink',
-    scoreBox: 'bg-success text-primary-ink',
-  },
-  adjacent: {
-    wrapper: 'border-2 border-info bg-surface',
-    headerBar: 'bg-info-soft border-b border-info/40 text-info-ink',
-    scoreBox: 'bg-info text-primary-ink',
-  },
-  partial: {
-    wrapper: 'border-2 border-warning bg-surface',
-    headerBar: 'bg-warning-soft border-b border-warning/40 text-warning-ink',
-    scoreBox: 'bg-warning text-primary-ink',
-  },
-  low: {
-    wrapper: 'border-2 border-danger bg-surface',
-    headerBar: 'bg-danger-soft border-b border-danger/40 text-danger-ink',
-    scoreBox: 'bg-danger text-primary-ink',
-  },
-  unscored: {
-    wrapper: 'border-2 border-border-strong bg-surface',
-    headerBar: 'bg-surface-sunken border-b border-border-strong text-ink',
-    scoreBox: 'bg-surface-sunken text-ink',
-  },
-};
-
-function VerdictBanner({
-  assessment,
-  matchTier,
-  matchScore,
-  isEvaluating,
-  isSavingOverride,
-  onEvaluate,
-  onSaveOverride,
-}: {
-  assessment: ApplicationAiAssessment | null;
-  matchTier: ApplicationMatchTier | null;
-  matchScore: number | null;
-  isEvaluating: boolean;
-  isSavingOverride: boolean;
-  onEvaluate: (forceReparseCv?: boolean) => Promise<void>;
-  onSaveOverride: (override: {
-    currentAssessment: ApplicationAiAssessment | null;
-    currentTier: ApplicationMatchTier | null;
-    currentScore: number | null;
-    nextTier: ApplicationMatchTier;
-    nextScore: number | null;
-    summary: string;
-    strengths: string[];
-    transferableSkills: string[];
-    gapsOrRisks: string[];
-    interviewQuestions: InterviewPrepQuestion[];
-  }) => Promise<void>;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [tierDraft, setTierDraft] = useState<ApplicationMatchTier>(matchTier ?? 'adjacent');
-  const [scoreDraft, setScoreDraft] = useState<string>(matchScore != null ? String(matchScore) : '');
-  const [summaryDraft, setSummaryDraft] = useState<string>(assessment?.summary ?? '');
-  const [strengthsDraft, setStrengthsDraft] = useState<string>(
-    (assessment?.strengths ?? []).join('\n'),
-  );
-  const [transferableDraft, setTransferableDraft] = useState<string>(
-    (assessment?.transferable_skills ?? []).join('\n'),
-  );
-  const [gapsDraft, setGapsDraft] = useState<string>((assessment?.gaps_or_risks ?? []).join('\n'));
-
-  const startEdit = () => {
-    setTierDraft(matchTier ?? 'adjacent');
-    setScoreDraft(matchScore != null ? String(matchScore) : '');
-    setSummaryDraft(assessment?.summary ?? '');
-    setStrengthsDraft((assessment?.strengths ?? []).join('\n'));
-    setTransferableDraft((assessment?.transferable_skills ?? []).join('\n'));
-    setGapsDraft((assessment?.gaps_or_risks ?? []).join('\n'));
-    setEditing(true);
-  };
-
-  const handleSave = async () => {
-    const parsedScore = scoreDraft.trim() === '' ? null : Number(scoreDraft);
-    await onSaveOverride({
-      currentAssessment: assessment,
-      currentTier: matchTier,
-      currentScore: matchScore,
-      nextTier: tierDraft,
-      nextScore: parsedScore != null && Number.isFinite(parsedScore) ? parsedScore : null,
-      summary: summaryDraft,
-      strengths: strengthsDraft.split('\n'),
-      transferableSkills: transferableDraft.split('\n'),
-      gapsOrRisks: gapsDraft.split('\n'),
-      interviewQuestions: assessment?.interview_questions ?? [],
-    });
-    setEditing(false);
-  };
-
-  const bannerStyle = matchTier ? TIER_BANNER_STYLES[matchTier] : TIER_BANNER_STYLES.unscored;
-
-  return (
-    <div className={cn('overflow-hidden rounded-card shadow-xs', bannerStyle.wrapper)}>
-      {/* Filled Top Header Band */}
-      <div
-        className={cn(
-          'flex flex-wrap items-center justify-between gap-3 px-5 py-2.5',
-          bannerStyle.headerBar,
-        )}
-      >
-        <div className="flex flex-wrap items-center gap-2.5">
-          <Sparkles className="h-5 w-5" />
-          <span className="font-display text-md font-bold">Executive AI Role Match Verdict</span>
-          {matchTier && <MatchBadge score={matchScore} tier={matchTier} />}
-          {assessment?.overridden_by_name && (
-            <span className="rounded-pill bg-surface px-2.5 py-0.5 text-xs font-bold text-primary">
-              Adjusted by {assessment.overridden_by_name}
-            </span>
-          )}
-          {assessment?.ai_original_tier &&
-            assessment.overridden_by_name &&
-            (assessment.ai_original_tier !== matchTier ||
-              assessment.ai_original_score !== matchScore) && (
-              <span className="text-sm font-medium">
-                (AI originally scored {MATCH_TIER_META[assessment.ai_original_tier].shortLabel}
-                {assessment.ai_original_score != null ? ` ${assessment.ai_original_score}%` : ''})
-              </span>
-            )}
-        </div>
-
-        <div className="flex shrink-0 items-center gap-2">
-          {!editing && (
-            <Button onClick={startEdit} size="sm" variant="secondary">
-              <Pencil className="mr-1.5 h-3.5 w-3.5" />
-              {assessment ? 'Edit / Override' : 'Set manual match'}
-            </Button>
-          )}
-          <Button
-            disabled={isEvaluating}
-            onClick={() => void onEvaluate(false)}
-            size="sm"
-            variant="primary"
-          >
-            <RefreshCw className={cn('mr-1.5 h-3.5 w-3.5', isEvaluating && 'animate-spin')} />
-            {isEvaluating ? 'Evaluating…' : assessment ? 'Re-evaluate' : 'Evaluate with AI'}
-          </Button>
-        </div>
-      </div>
-
-      {/* Verdict Summary Body */}
-      <div className="flex flex-col gap-4 p-5 md:flex-row md:items-center">
-        {matchTier && (
-          <div
-            className={cn(
-              'flex h-16 w-22 shrink-0 flex-col items-center justify-center rounded-card font-display shadow-xs',
-              bannerStyle.scoreBox,
-            )}
-          >
-            {matchTier !== 'unscored' && matchScore != null ? (
-              <>
-                <span className="text-xl font-bold leading-none tabular-nums">
-                  {Math.round(matchScore)}%
-                </span>
-                <span className="mt-1 text-xs font-bold uppercase tracking-wider">
-                  {MATCH_TIER_META[matchTier].shortLabel}
-                </span>
-              </>
-            ) : (
-              <span className="px-1 text-center text-sm font-bold">Manual Read</span>
-            )}
-          </div>
-        )}
-
-        <div className="min-w-0 flex-1">
-          {assessment?.summary ? (
-            <p className="text-md font-medium leading-relaxed text-ink">{assessment.summary}</p>
-          ) : (
-            <p className="text-md font-medium text-ink-secondary">
-              Not evaluated yet. Click <strong>Evaluate with AI</strong> to score this candidate’s
-              CV, cover letter, and screening answers against the job description.
-            </p>
-          )}
-        </div>
-      </div>
-
-      {editing && (
-        <div className="border-t border-border-strong bg-surface-sunken/40 p-5 space-y-4">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div>
-              <Label className="text-sm font-semibold text-ink">Match tier</Label>
-              <Select
-                onValueChange={(v) => setTierDraft(v as ApplicationMatchTier)}
-                value={tierDraft}
-              >
-                <SelectTrigger className="mt-1 bg-surface text-base">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {(Object.keys(MATCH_TIER_META) as ApplicationMatchTier[]).map((t) => (
-                    <SelectItem key={t} value={t}>
-                      {MATCH_TIER_META[t].label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="text-sm font-semibold text-ink">Match score (0–100%)</Label>
-              <Input
-                className="mt-1 bg-surface text-base"
-                disabled={tierDraft === 'unscored'}
-                max={100}
-                min={0}
-                onChange={(e) => setScoreDraft(e.target.value)}
-                placeholder="e.g. 82"
-                type="number"
-                value={scoreDraft}
-              />
-            </div>
-          </div>
-
-          <div>
-            <Label className="text-sm font-semibold text-ink">Recruiter brief / summary</Label>
-            <Textarea
-              className="mt-1 min-h-0 bg-surface text-md"
-              onChange={(e) => setSummaryDraft(e.target.value)}
-              placeholder="2–3 sentence summary of how this candidate fits the role…"
-              rows={2}
-              value={summaryDraft}
-            />
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-            <div>
-              <Label className="text-sm font-semibold text-ink">Strengths (one per line)</Label>
-              <Textarea
-                className="mt-1 min-h-0 bg-surface text-base"
-                onChange={(e) => setStrengthsDraft(e.target.value)}
-                rows={3}
-                value={strengthsDraft}
-              />
-            </div>
-            <div>
-              <Label className="text-sm font-semibold text-ink">
-                Transferable / Adjacent Fit (one per line)
-              </Label>
-              <Textarea
-                className="mt-1 min-h-0 bg-surface text-base"
-                onChange={(e) => setTransferableDraft(e.target.value)}
-                rows={3}
-                value={transferableDraft}
-              />
-            </div>
-            <div>
-              <Label className="text-sm font-semibold text-ink">Gaps or Risks (one per line)</Label>
-              <Textarea
-                className="mt-1 min-h-0 bg-surface text-base"
-                onChange={(e) => setGapsDraft(e.target.value)}
-                rows={3}
-                value={gapsDraft}
-              />
-            </div>
-          </div>
-
-          <div className="flex justify-end gap-2">
-            <Button onClick={() => setEditing(false)} size="sm" variant="ghost">
-              Cancel
-            </Button>
-            <Button
-              disabled={isSavingOverride}
-              onClick={() => void handleSave()}
-              size="sm"
-              variant="primary"
-            >
-              {isSavingOverride ? 'Saving…' : 'Save assessment'}
-            </Button>
-          </div>
-        </div>
       )}
     </div>
   );
@@ -1274,7 +1155,7 @@ function MatchBreakdownSection({
 
   return (
     <div className="space-y-5">
-      {/* 4-Pillar Score Cards — Stacked Full-Width (One Per Row) so eyes never wander */}
+      {/* 4-Pillar Score Cards — Stacked Full-Width (One Per Row) */}
       {assessment.status === 'scored' && (
         <div className="space-y-3.5">
           <PillarCard
@@ -1304,7 +1185,7 @@ function MatchBreakdownSection({
         </div>
       )}
 
-      {/* Full-Width Stacked Evidence Cards with Filled Colored Header Bands */}
+      {/* Full-Width Stacked Evidence Cards */}
       <div className="space-y-4">
         {/* 1. Strengths & Direct Evidence */}
         <div className="overflow-hidden rounded-card border-2 border-success/50 bg-surface shadow-2xs">
@@ -1517,10 +1398,10 @@ function InterviewPrepSection({
   };
 
   return (
-    <div className="overflow-hidden rounded-card border border-border-strong bg-surface shadow-2xs">
-      <div className="flex items-center justify-between gap-2 border-b border-border-strong bg-primary-soft px-5 py-3">
+    <div className="rounded-card border border-border-strong bg-surface p-6 shadow-2xs">
+      <div className="mb-4 flex items-center justify-between gap-2">
         <div>
-          <h3 className="font-display text-md font-bold text-ink">
+          <h3 className="font-display text-lg font-bold text-ink">
             Questions to Probe in Interview
           </h3>
           <p className="text-sm font-medium text-ink-secondary">
@@ -1535,142 +1416,139 @@ function InterviewPrepSection({
         )}
       </div>
 
-      <div className="p-5">
-        {questions.length === 0 && !adding ? (
-          <p className="text-md font-medium text-ink-secondary">
-            No interview prep questions yet. Run AI evaluation or add your own questions for the
-            call.
-          </p>
-        ) : (
-          <div className="space-y-3.5">
-            {questions.map((q, idx) =>
-              editingId === q.id ? (
-                <div
-                  className="space-y-3 rounded-control border border-border-strong bg-surface-sunken/50 p-4"
-                  key={q.id}
-                >
-                  <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                    <Input
-                      className="border-border-strong bg-surface text-base"
-                      onChange={(e) => setTopicDraft(e.target.value)}
-                      placeholder="Topic (e.g. URA EFRIS depth)"
-                      value={topicDraft}
-                    />
-                    <Input
-                      className="border-border-strong bg-surface text-base"
-                      onChange={(e) => setWhyDraft(e.target.value)}
-                      placeholder="Why ask (what was unclear on CV)"
-                      value={whyDraft}
-                    />
-                  </div>
-                  <Textarea
-                    className="min-h-0 border-border-strong bg-surface text-md"
-                    onChange={(e) => setQuestionDraft(e.target.value)}
-                    placeholder="Exact question to ask the candidate…"
-                    rows={2}
-                    value={questionDraft}
-                  />
-                  <div className="flex justify-end gap-2">
-                    <Button onClick={() => setEditingId(null)} size="sm" variant="ghost">
-                      Cancel
-                    </Button>
-                    <Button
-                      disabled={isSaving || !questionDraft.trim()}
-                      onClick={() => void handleSaveEdited(q.id)}
-                      size="sm"
-                      variant="primary"
-                    >
-                      Save
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <div
-                  className="rounded-control border border-border-strong bg-surface-sunken/40 p-4"
-                  key={q.id}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-ink">
-                        {idx + 1}
-                      </span>
-                      <span className="rounded-pill border border-border-strong bg-surface px-3 py-0.5 text-base font-bold text-ink">
-                        {q.topic}
-                      </span>
-                      <span className="text-sm font-medium text-ink-secondary">
-                        {q.source === 'human' ? 'Added by recruiter' : 'AI suggested'}
-                      </span>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-1">
-                      <button
-                        aria-label={`Edit question ${idx + 1}`}
-                        className="rounded p-1.5 text-ink-secondary hover:bg-surface hover:text-ink"
-                        onClick={() => startEditQuestion(q)}
-                        type="button"
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </button>
-                      <button
-                        aria-label={`Delete question ${idx + 1}`}
-                        className="rounded p-1.5 text-ink-secondary hover:bg-surface hover:text-danger"
-                        onClick={() => void handleDelete(q.id)}
-                        type="button"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </div>
-                  <p className="mt-2.5 text-md font-bold leading-snug text-ink">{q.question}</p>
-                  {q.why_ask && (
-                    <p className="mt-1.5 text-base leading-relaxed text-ink">
-                      <strong className="font-bold text-primary">Why probe:</strong> {q.why_ask}
-                    </p>
-                  )}
-                </div>
-              ),
-            )}
-          </div>
-        )}
-
-        {adding && (
-          <div className="mt-4 space-y-3 rounded-control border border-border-strong bg-surface-sunken/50 p-4">
-            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-              <Input
-                className="border-border-strong bg-surface text-base"
-                onChange={(e) => setTopicDraft(e.target.value)}
-                placeholder="Topic (e.g. Team management scale)"
-                value={topicDraft}
-              />
-              <Input
-                className="border-border-strong bg-surface text-base"
-                onChange={(e) => setWhyDraft(e.target.value)}
-                placeholder="Why ask (optional note)"
-                value={whyDraft}
-              />
-            </div>
-            <Textarea
-              className="min-h-0 border-border-strong bg-surface text-md"
-              onChange={(e) => setQuestionDraft(e.target.value)}
-              placeholder="Write the question to ask in the interview…"
-              rows={2}
-              value={questionDraft}
-            />
-            <div className="flex justify-end gap-2">
-              <Button onClick={() => setAdding(false)} size="sm" variant="ghost">
-                Cancel
-              </Button>
-              <Button
-                disabled={isSaving || !questionDraft.trim()}
-                onClick={() => void handleSaveNew()}
-                size="sm"
-                variant="primary"
+      {questions.length === 0 && !adding ? (
+        <p className="text-md font-medium text-ink-secondary">
+          No interview prep questions yet. Run AI evaluation or add your own questions for the call.
+        </p>
+      ) : (
+        <div className="space-y-3.5">
+          {questions.map((q, idx) =>
+            editingId === q.id ? (
+              <div
+                className="space-y-3 rounded-control border border-border-strong bg-surface-sunken/50 p-4"
+                key={q.id}
               >
-                Add question
-              </Button>
-            </div>
+                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                  <Input
+                    className="border-border-strong bg-surface text-base"
+                    onChange={(e) => setTopicDraft(e.target.value)}
+                    placeholder="Topic (e.g. URA EFRIS depth)"
+                    value={topicDraft}
+                  />
+                  <Input
+                    className="border-border-strong bg-surface text-base"
+                    onChange={(e) => setWhyDraft(e.target.value)}
+                    placeholder="Why ask (what was unclear on CV)"
+                    value={whyDraft}
+                  />
+                </div>
+                <Textarea
+                  className="min-h-0 border-border-strong bg-surface text-md"
+                  onChange={(e) => setQuestionDraft(e.target.value)}
+                  placeholder="Exact question to ask the candidate…"
+                  rows={2}
+                  value={questionDraft}
+                />
+                <div className="flex justify-end gap-2">
+                  <Button onClick={() => setEditingId(null)} size="sm" variant="ghost">
+                    Cancel
+                  </Button>
+                  <Button
+                    disabled={isSaving || !questionDraft.trim()}
+                    onClick={() => void handleSaveEdited(q.id)}
+                    size="sm"
+                    variant="primary"
+                  >
+                    Save
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div
+                className="rounded-control border border-border-strong bg-surface-sunken/40 p-4"
+                key={q.id}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-ink">
+                      {idx + 1}
+                    </span>
+                    <span className="rounded-pill border border-border-strong bg-surface px-3 py-0.5 text-base font-bold text-ink">
+                      {q.topic}
+                    </span>
+                    <span className="text-sm font-medium text-ink-secondary">
+                      {q.source === 'human' ? 'Added by recruiter' : 'AI suggested'}
+                    </span>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <button
+                      aria-label={`Edit question ${idx + 1}`}
+                      className="rounded p-1.5 text-ink-secondary hover:bg-surface hover:text-ink"
+                      onClick={() => startEditQuestion(q)}
+                      type="button"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                    <button
+                      aria-label={`Delete question ${idx + 1}`}
+                      className="rounded p-1.5 text-ink-secondary hover:bg-surface hover:text-danger"
+                      onClick={() => void handleDelete(q.id)}
+                      type="button"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+                <p className="mt-2.5 text-md font-bold leading-snug text-ink">{q.question}</p>
+                {q.why_ask && (
+                  <p className="mt-1.5 text-base leading-relaxed text-ink">
+                    <strong className="font-bold text-primary">Why probe:</strong> {q.why_ask}
+                  </p>
+                )}
+              </div>
+            ),
+          )}
+        </div>
+      )}
+
+      {adding && (
+        <div className="mt-4 space-y-3 rounded-control border border-border-strong bg-surface-sunken/50 p-4">
+          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+            <Input
+              className="border-border-strong bg-surface text-base"
+              onChange={(e) => setTopicDraft(e.target.value)}
+              placeholder="Topic (e.g. Team management scale)"
+              value={topicDraft}
+            />
+            <Input
+              className="border-border-strong bg-surface text-base"
+              onChange={(e) => setWhyDraft(e.target.value)}
+              placeholder="Why ask (optional note)"
+              value={whyDraft}
+            />
           </div>
-        )}
-      </div>
+          <Textarea
+            className="min-h-0 border-border-strong bg-surface text-md"
+            onChange={(e) => setQuestionDraft(e.target.value)}
+            placeholder="Write the question to ask in the interview…"
+            rows={2}
+            value={questionDraft}
+          />
+          <div className="flex justify-end gap-2">
+            <Button onClick={() => setAdding(false)} size="sm" variant="ghost">
+              Cancel
+            </Button>
+            <Button
+              disabled={isSaving || !questionDraft.trim()}
+              onClick={() => void handleSaveNew()}
+              size="sm"
+              variant="primary"
+            >
+              Add question
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1750,28 +1628,6 @@ function FeedbackForm({
         </Button>
       </div>
     </div>
-  );
-}
-
-function QuickAction({
-  href,
-  icon: Icon,
-  label,
-}: {
-  href: string;
-  icon: typeof Phone;
-  label: string;
-}) {
-  return (
-    <a
-      className="inline-flex items-center gap-1.5 rounded-control border border-border-strong bg-surface-sunken/70 px-3 py-1 text-base font-semibold text-ink transition-colors hover:bg-primary-soft hover:text-primary"
-      href={href}
-      rel="noreferrer"
-      target="_blank"
-    >
-      <Icon className="h-4 w-4 text-primary" />
-      {label}
-    </a>
   );
 }
 
