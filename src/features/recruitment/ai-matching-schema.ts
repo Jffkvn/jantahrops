@@ -51,11 +51,21 @@ export const interviewPrepQuestionSchema = z.object({
 
 export type InterviewPrepQuestion = z.infer<typeof interviewPrepQuestionSchema>;
 
+export const hindranceFlagSchema = z.object({
+  severity: z.enum(['blocker', 'verify']).default('verify'),
+  title: z.string(),
+  detail: z.string().default(''),
+  confirm_prompt: z.string().default(''),
+});
+
+export type HindranceFlag = z.infer<typeof hindranceFlagSchema>;
+
 export const applicationAiAssessmentSchema = z.object({
   version: z.number().default(1),
   status: z.enum(['scored', 'needs_manual_read', 'error']).default('scored'),
   status_note: z.string().nullable().default(null),
   summary: z.string().default(''),
+  hindrance_flags: z.array(hindranceFlagSchema).default([]),
   pillars: z
     .object({
       core_skills: pillarScoreSchema.default({ score: 0, max: 35, note: '' }),

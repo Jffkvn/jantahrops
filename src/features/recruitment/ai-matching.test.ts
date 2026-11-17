@@ -80,6 +80,37 @@ describe('parseCvData & parseAiAssessment', () => {
     expect(unscored?.status).toBe('needs_manual_read');
     expect(unscored?.status_note).toContain('Scanned image PDF');
     expect(unscored?.interview_questions).toHaveLength(1);
+    expect(unscored?.hindrance_flags).toEqual([]);
+  });
+
+  it('parses hindrance_flags when present so location/practical blockers surface first', () => {
+    const flagged = parseAiAssessment({
+      version: 1,
+      status: 'scored',
+      summary: 'Candidate is based in Lusaka, Zambia for a Kampala, Uganda vacancy.',
+      hindrance_flags: [
+        {
+          severity: 'blocker',
+          title: 'Location mismatch: Lusaka vs Kampala',
+          detail: 'Role requires Kampala, Uganda presence; candidate lists Lusaka, Zambia.',
+          confirm_prompt: 'Confirm if candidate is relocating to Kampala at own cost and holds Uganda work eligibility.',
+        },
+      ],
+      pillars: {
+        core_skills: { score: 20, max: 35, note: 'Good HR degree' },
+        transferable_and_industry: { score: 20, max: 30, note: 'Relevant admin skills' },
+        experience_and_trajectory: { score: 13, max: 20, note: 'Early career' },
+        practical_and_cover_note: { score: 6, max: 15, note: 'Location unconfirmed' },
+      },
+      strengths: ['Relevant degree'],
+      transferable_skills: ['Communication'],
+      gaps_or_risks: ['Location mismatch'],
+      interview_questions: [],
+    });
+
+    expect(flagged?.hindrance_flags).toHaveLength(1);
+    expect(flagged?.hindrance_flags[0]?.severity).toBe('blocker');
+    expect(flagged?.hindrance_flags[0]?.confirm_prompt).toContain('Kampala');
   });
 });
 

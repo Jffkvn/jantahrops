@@ -4,9 +4,10 @@ import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
 import { StatusChip } from '@/components/status-chip';
 import { formatRelative } from '@/lib/format';
+import { AlertTriangle } from 'lucide-react';
 import { BOARD_STAGES, stageMeta } from './recruitment-meta';
 import { useApplications, useMoveStage, useVacancy, useUpdateVacancy } from './use-recruitment';
-import { sortApplicationsByMatch } from './ai-matching-schema';
+import { parseAiAssessment, sortApplicationsByMatch } from './ai-matching-schema';
 import { MatchBadge } from './match-badge';
 import type { ApplicationWithRelations } from './recruitment-api';
 import type { ApplicationStage } from '@/types/database';
@@ -128,6 +129,8 @@ export function ApplicationCard({
   const skills = application.candidate?.skills ?? [];
   const meta = stageMeta(application.stage);
   const candidate = application.candidate;
+  const hindranceFlags = parseAiAssessment(application.ai_assessment)?.hindrance_flags ?? [];
+  const hasBlocker = hindranceFlags.some((f) => f.severity === 'blocker');
 
   return (
     <div
@@ -162,9 +165,19 @@ export function ApplicationCard({
           {meta.label}
         </StatusChip>
       </div>
-      {application.match_tier && (
-        <div className="mt-1.5 flex items-center gap-1.5">
-          <MatchBadge compact score={application.match_score} tier={application.match_tier} />
+      {(application.match_tier || hindranceFlags.length > 0) && (
+        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+          {application.match_tier && (
+            <MatchBadge compact score={application.match_score} tier={application.match_tier} />
+          )}
+          {hindranceFlags.length > 0 && (
+            <StatusChip showDot={false} variant={hasBlocker ? 'danger' : 'warning'}>
+              <span className="inline-flex items-center gap-1" title={hindranceFlags[0]?.title}>
+                <AlertTriangle className="h-3 w-3 shrink-0" />
+                {hindranceFlags.length} {hindranceFlags.length === 1 ? 'flag' : 'flags'}
+              </span>
+            </StatusChip>
+          )}
         </div>
       )}
       {headline && <p className="mt-1 line-clamp-2 text-xs text-ink-secondary">{headline}</p>}

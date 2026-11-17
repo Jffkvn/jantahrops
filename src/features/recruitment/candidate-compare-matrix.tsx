@@ -498,6 +498,28 @@ export function CandidateCompareMatrix({
                         ? MATCH_TIER_META[app.match_tier].label
                         : 'Run AI evaluation on this candidate to see a full comparison.')}
                   </p>
+                  {(assessment?.hindrance_flags?.length ?? 0) > 0 && (
+                    <div className="space-y-2 border-t border-border bg-warning-soft/55 px-4 py-3">
+                      {assessment!.hindrance_flags.map((flag, fIdx) => (
+                        <div className="text-base text-ink" key={`${flag.title}-${fIdx}`}>
+                          <span className="inline-flex items-center gap-1.5 font-bold text-ink">
+                            <AlertTriangle
+                              className={cn(
+                                'h-4 w-4 shrink-0',
+                                flag.severity === 'blocker' ? 'text-danger' : 'text-warning',
+                              )}
+                            />
+                            {flag.title}
+                          </span>
+                          {flag.confirm_prompt && (
+                            <p className="mt-0.5 text-sm font-medium text-ink-secondary">
+                              Confirm first: {flag.confirm_prompt}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {/* 3. 4-Pillar Score Bars */}

@@ -637,6 +637,54 @@ function ApplicationDetailWorkspace({
               'Not evaluated yet. Click Re-evaluate to score this candidate’s CV, cover letter, and screening answers against the job description.'}
           </p>
 
+          {/* Practical Hindrance / Dealbreaker Flags surfaced right inside the Hero Card */}
+          {(assessment?.hindrance_flags?.length ?? 0) > 0 && (
+            <div className="mt-4 space-y-2.5">
+              {assessment!.hindrance_flags.map((flag, idx) => (
+                <div
+                  className={cn(
+                    'rounded-control border px-4 py-3 text-ink',
+                    flag.severity === 'blocker'
+                      ? 'border-danger/50 bg-danger-soft/85'
+                      : 'border-warning/60 bg-warning-soft/90',
+                  )}
+                  key={`${flag.title}-${idx}`}
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <AlertTriangle
+                      className={cn(
+                        'h-4 w-4 shrink-0',
+                        flag.severity === 'blocker' ? 'text-danger' : 'text-warning',
+                      )}
+                    />
+                    <span
+                      className={cn(
+                        'rounded-pill px-2.5 py-0.5 text-xs font-bold uppercase tracking-wide',
+                        flag.severity === 'blocker'
+                          ? 'bg-danger text-primary-ink'
+                          : 'bg-warning text-primary-ink',
+                      )}
+                    >
+                      {flag.severity === 'blocker' ? 'Hindrance Flag' : 'Confirm First'}
+                    </span>
+                    <span className="text-md font-bold text-ink">{flag.title}</span>
+                  </div>
+                  {flag.detail && (
+                    <p className="mt-1.5 text-base font-medium leading-snug text-ink">
+                      {flag.detail}
+                    </p>
+                  )}
+                  {flag.confirm_prompt && (
+                    <p className="mt-1.5 text-base font-semibold leading-snug text-ink">
+                      Suggested check with candidate:{' '}
+                      <span className="font-medium">{flag.confirm_prompt}</span>
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
           {/* Inline Override Editor when Edit is clicked */}
           {editingVerdict && (
             <div className="mt-5 space-y-4 rounded-card border border-border-strong bg-surface p-5">

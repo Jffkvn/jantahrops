@@ -39,6 +39,7 @@ Deno.test('application confirmation names the role and carries the data protecti
   assertEquals(subject, "We've received your application for Payroll Officer");
   assertStringIncludes(text, 'Thank you, Jane');
   assertStringIncludes(text, 'together with your CV');
+  assertStringIncludes(text, 'Please note that only shortlisted candidates will be contacted');
   assertStringIncludes(text, 'Only shortlisted candidates will be contacted');
   assertStringIncludes(text, 'Uganda Data Protection and Privacy Act, 2019');
   assertStringIncludes(text, '24 months');
