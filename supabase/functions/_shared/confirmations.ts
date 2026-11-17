@@ -54,7 +54,7 @@ export function applicationConfirmation(input: {
     blocks: [
       {
         kind: 'paragraph',
-        text: `We've received your application for the ${role} role${input.hasCv ? ', together with your CV' : ''}. Thank you for your interest. Please note that only shortlisted candidates will be contacted.`,
+        text: `We've received your application for the ${role} role${input.hasCv ? ', together with your CV' : ''}. Thank you for your interest.`,
       },
       { kind: 'heading', text: 'What happens next' },
       {
@@ -62,7 +62,6 @@ export function applicationConfirmation(input: {
         items: [
           'Our recruitment team reviews every application against the requirements of the role.',
           'Only shortlisted candidates will be contacted — if you are shortlisted, we will reach out by email or phone to arrange the next step.',
-          'You do not need to apply again or send a follow-up email. Only reply if your contact details or CV have changed.',
         ],
       },
       candidateDataNotice('We use them only to assess your application and for recruitment purposes.'),
