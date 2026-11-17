@@ -1,6 +1,11 @@
 // Run: deno test supabase/functions/_shared/
 import { assert, assertEquals, assertStringIncludes } from 'jsr:@std/assert@1';
-import { buildCandidateAlert, formatAnswer } from './candidate-alert.ts';
+import {
+  buildCandidateAlert,
+  buildClientForwardEmail,
+  formatAnswer,
+  parseApplicationNotes,
+} from './candidate-alert.ts';
 
 const base = {
   fullName: 'Jane Namuli',
@@ -62,4 +67,48 @@ Deno.test('subject cannot carry line breaks and long notes are shortened', () =>
   assert(!subject.includes('\n'));
   assertStringIncludes(subject, 'vacancy old-role is not open');
   assertStringIncludes(text, '(shortened, full text in Ops)');
+});
+
+Deno.test('parseApplicationNotes extracts cover letter text/path, linkedin and location cleanly', () => {
+  const withText = parseApplicationNotes(
+    '[Cover Letter]\nExcited to support fibre teams.\n\n[LinkedIn]\nhttps://linkedin.com/in/jane\n\n[Location]\nKampala, Uganda',
+  );
+  assertEquals(withText.coverLetterText, 'Excited to support fibre teams.');
+  assertEquals(withText.coverLetterPath, null);
+  assertEquals(withText.linkedinUrl, 'https://linkedin.com/in/jane');
+  assertEquals(withText.location, 'Kampala, Uganda');
+
+  const withFile = parseApplicationNotes(
+    '[Cover Letter]\nCover Letter Document Uploaded: cvs/11111111-2222-3333-4444-555555555555-Jane_CoverLetter.pdf\n\n[Location]\nEntebbe',
+  );
+  assertEquals(withFile.coverLetterText, null);
+  assertEquals(
+    withFile.coverLetterPath,
+    'cvs/11111111-2222-3333-4444-555555555555-Jane_CoverLetter.pdf',
+  );
+  assertEquals(withFile.location, 'Entebbe');
+});
+
+Deno.test('buildClientForwardEmail produces client-safe copy with no Ops links or internal notes', () => {
+  const { subject, text, html } = buildClientForwardEmail({
+    ...base,
+    vacancyTitle: 'HR Assistant',
+    availability: '30_days',
+    cvAttached: true,
+    cvDownloadUrl: 'https://storage.example.com/cv-signed.pdf',
+    screeningQuestions: [{ id: 'sq_1', question: 'Years of HR experience?' }],
+    screeningAnswers: { sq_1: 2 },
+    notes:
+      '[Cover Letter]\nDetail-oriented HR graduate.\n\n[LinkedIn]\nhttps://linkedin.com/in/jane\n\n[Location]\nKampala, Uganda',
+  });
+  assertEquals(subject, 'Candidate Application: Jane Namuli — HR Assistant');
+  assertStringIncludes(text, 'Availability: 1 month (30 days)');
+  assertStringIncludes(text, 'Location: Kampala, Uganda');
+  assertStringIncludes(text, 'LinkedIn: https://linkedin.com/in/jane');
+  assertStringIncludes(text, 'Years of HR experience?: 2');
+  assertStringIncludes(text, 'Detail-oriented HR graduate.');
+  assertStringIncludes(text, 'Download Candidate CV: https://storage.example.com/cv-signed.pdf');
+  assertStringIncludes(html, 'Uganda Data Protection and Privacy Act, 2019');
+  assert(!text.includes('JantaHR Ops'));
+  assert(!html.includes('Open in JantaHR Ops'));
 });

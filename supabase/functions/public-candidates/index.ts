@@ -17,19 +17,30 @@
 //
 // Deploy: supabase functions deploy public-candidates --no-verify-jwt
 
-import { createClient } from 'jsr:@supabase/supabase-js@2';
-import { buildCandidateAlert, type ScreeningQuestion } from '../_shared/candidate-alert.ts';
+import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2';
+import {
+  buildCandidateAlert,
+  buildClientForwardEmail,
+  parseApplicationNotes,
+  type ScreeningQuestion,
+} from '../_shared/candidate-alert.ts';
 import { applicationConfirmation, isDeliverableEmail, talentPoolConfirmation } from '../_shared/confirmations.ts';
 import { contactDifferences, differenceNote, type ExistingContact, gapFill } from '../_shared/contact-match.ts';
 import { runAfterResponse, sendNotification } from '../_shared/mailer.ts';
 import { opsLink } from '../_shared/ops-url.ts';
-import { sendConfirmation } from '../_shared/resend.ts';
+import { sendConfirmation, sendResendEmail, type ResendAttachment } from '../_shared/resend.ts';
 
 // --- config ----------------------------------------------------------------
 const MAX_BODY_BYTES = 10_240; // 10 KB — the CV is uploaded separately
 const RATE_LIMIT_MAX = 8; // submissions per IP per window
 const RATE_LIMIT_WINDOW_MIN = 1;
 const UPLOAD_URL_TTL_SECONDS = 900; // 15 minutes
+const CLIENT_DOWNLOAD_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 days for forwarded client links
+const MAX_EMAIL_ATTACHMENT_BYTES = 5 * 1024 * 1024; // 5 MB per attached document
+const MAX_TOTAL_ATTACHMENT_BYTES = 7 * 1024 * 1024; // 7 MB total across CV + Cover Letter
+const SAFE_CV_PATH_RE = /^cvs\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-[a-z0-9._-]+$/i;
+const SAFE_COVER_LETTER_PATH_RE =
+  /^cvs\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-[a-z0-9._-]+_CoverLetter\.[a-z0-9]{2,5}$/i;
 const ALLOWED_MIME = new Set([
   'application/pdf',
   'application/msword',
@@ -100,6 +111,76 @@ function extensionForMime(mime: string): string {
     case 'application/pdf': return 'pdf';
     case 'application/msword': return 'doc';
     default: return 'docx';
+  }
+}
+
+function isSafeCvStoragePath(path: string | null | undefined): path is string {
+  if (!path || path.includes('..')) return false;
+  return SAFE_CV_PATH_RE.test(path.trim());
+}
+
+function uint8ToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const sub = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode(...sub);
+  }
+  return btoa(binary);
+}
+
+function buildAttachmentFilename(
+  candidateName: string,
+  kind: 'CV' | 'Cover_Letter',
+  storagePath: string,
+): string {
+  const safeName =
+    candidateName
+      .trim()
+      .replace(/[^a-z0-9]+/gi, '_')
+      .replace(/^_+|_+$/g, '')
+      .slice(0, 50) || 'Candidate';
+  const extMatch = /\.([a-z0-9]{2,5})$/i.exec(storagePath);
+  const ext = extMatch ? extMatch[1]!.toLowerCase() : 'pdf';
+  return `${safeName}_${kind}.${ext}`;
+}
+
+async function prepareForwardDocument(
+  supabase: SupabaseClient,
+  storagePath: string | null,
+  attachmentFilename: string,
+  remainingBudgetBytes: number,
+): Promise<{ signedUrl: string | null; attachment: ResendAttachment | null; bytesUsed: number }> {
+  if (!storagePath || !isSafeCvStoragePath(storagePath)) {
+    return { signedUrl: null, attachment: null, bytesUsed: 0 };
+  }
+  try {
+    const { data: signedData } = await supabase.storage
+      .from(BUCKET)
+      .createSignedUrl(storagePath, CLIENT_DOWNLOAD_TTL_SECONDS, { download: attachmentFilename });
+    const signedUrl = signedData?.signedUrl ?? null;
+
+    let attachment: ResendAttachment | null = null;
+    let bytesUsed = 0;
+    const { data: fileBlob, error: dlErr } = await supabase.storage.from(BUCKET).download(storagePath);
+    if (!dlErr && fileBlob) {
+      const buf = new Uint8Array(await fileBlob.arrayBuffer());
+      if (
+        buf.byteLength > 0 &&
+        buf.byteLength <= MAX_EMAIL_ATTACHMENT_BYTES &&
+        buf.byteLength <= remainingBudgetBytes
+      ) {
+        attachment = {
+          filename: attachmentFilename,
+          content: uint8ToBase64(buf),
+        };
+        bytesUsed = buf.byteLength;
+      }
+    }
+    return { signedUrl, attachment, bytesUsed };
+  } catch (err) {
+    console.warn('prepareForwardDocument failed:', err);
+    return { signedUrl: null, attachment: null, bytesUsed: 0 };
   }
 }
 
@@ -333,11 +414,13 @@ Deno.serve(async (req: Request) => {
     }
 
     // Record the CV file (if one was uploaded) and point candidates.cv_file_id at it.
-    if (payload.cvPath) {
+    let freshlyUploadedCvPath: string | null = null;
+    if (payload.cvPath && isSafeCvStoragePath(payload.cvPath)) {
+      const cleanCvPath = payload.cvPath.trim();
       const { data: fileMeta, error: fileError } = await supabase
         .from('candidate_files')
         .select('id, path')
-        .eq('path', payload.cvPath)
+        .eq('path', cleanCvPath)
         .maybeSingle();
 
       if (fileError) throw fileError;
@@ -345,6 +428,7 @@ Deno.serve(async (req: Request) => {
       if (fileMeta) {
         await supabase.from('candidates').update({ cv_file_id: fileMeta.id }).eq('id', candidateId);
       } else {
+        freshlyUploadedCvPath = cleanCvPath;
         // The upload URL was issued but the file never uploaded (or the metadata
         // row is missing). Store the reference anyway as a best-effort so the
         // registration still completes.
@@ -352,8 +436,8 @@ Deno.serve(async (req: Request) => {
           .from('candidate_files')
           .insert({
             bucket: BUCKET,
-            path: payload.cvPath,
-            filename: payload.cvPath.split('/').pop() ?? payload.cvPath,
+            path: cleanCvPath,
+            filename: cleanCvPath.split('/').pop() ?? cleanCvPath,
             mime: 'application/octet-stream',
             size_bytes: 0,
           })
@@ -366,13 +450,13 @@ Deno.serve(async (req: Request) => {
     }
 
     // If the CV was replaced, clean up the old file (best-effort).
-    if (oldCvFileId && payload.cvPath) {
+    if (oldCvFileId && freshlyUploadedCvPath) {
       const { data: oldFile } = await supabase
         .from('candidate_files')
         .select('path')
         .eq('id', oldCvFileId)
         .maybeSingle();
-      if (oldFile) {
+      if (oldFile && oldFile.path !== freshlyUploadedCvPath) {
         await supabase.storage.from(BUCKET).remove([oldFile.path]);
         await supabase.from('candidate_files').delete().eq('id', oldCvFileId);
       }
@@ -382,11 +466,16 @@ Deno.serve(async (req: Request) => {
     const vacancySlug = (payload.vacancySlug ?? '').trim();
     const isTalentPool = !vacancySlug || vacancySlug === TALENT_POOL_SLUG;
     let applicationId: string | null = null;
-    let vacancy: { id: string; title: string; screening_questions: unknown } | null = null;
+    let vacancy: {
+      id: string;
+      title: string;
+      screening_questions: unknown;
+      forwarding_emails?: unknown;
+    } | null = null;
     if (!isTalentPool) {
       const { data } = await supabase
         .from('vacancies')
-        .select('id, title, screening_questions')
+        .select('id, title, screening_questions, forwarding_emails')
         .eq('slug', vacancySlug)
         .eq('is_public', true)
         .eq('status', 'open')
@@ -445,13 +534,14 @@ Deno.serve(async (req: Request) => {
     // confirm receipt to the candidate (Resend). Neither can fail the submission.
     const background: Promise<unknown>[] = [];
 
+    const questions = Array.isArray(vacancy?.screening_questions)
+      ? (vacancy.screening_questions as ScreeningQuestion[])
+      : [];
+
     // Team alert. Skip a repeat application to the same vacancy (the unique
     // constraint made it a no-op, so there is nothing new to review).
     const repeatApplication = Boolean(vacancy) && !applicationId;
     if (!repeatApplication) {
-      const questions = Array.isArray(vacancy?.screening_questions)
-        ? (vacancy.screening_questions as ScreeningQuestion[])
-        : [];
       const alert = buildCandidateAlert({
         fullName,
         email,
@@ -478,20 +568,105 @@ Deno.serve(async (req: Request) => {
       background.push(sendNotification({ ...alert, replyTo: email }, 'candidate alert'));
     }
 
-    // Confirmation to the candidate, including a repeat applicant (they may
-    // have sent an updated CV and should still hear back).
-    if (isDeliverableEmail(email)) {
-      const hasCv = Boolean(payload.cvPath);
-      const confirmation = vacancy
-        ? applicationConfirmation({ fullName, vacancyTitle: vacancy.title, hasCv })
-        : talentPoolConfirmation({ fullName, hasCv });
+    // Resend tasks (candidate confirmation + optional external client forwarding)
+    // run sequentially so they never trip Resend's 2 req/sec burst rate limit.
+    const forwardRecipients =
+      !repeatApplication && applicationId && Array.isArray(vacancy?.forwarding_emails)
+        ? vacancy.forwarding_emails
+            .map((addr) => (typeof addr === 'string' ? addr.trim().toLowerCase() : ''))
+            .filter((addr): addr is string => isDeliverableEmail(addr))
+            .slice(0, 5)
+        : [];
+
+    if (isDeliverableEmail(email) || forwardRecipients.length > 0) {
       background.push(
-        sendConfirmation(
-          email,
-          confirmation,
-          vacancy ? 'application_confirmation' : 'talent_pool_confirmation',
-          `candidate-confirm-${submissionId}`,
-        ),
+        (async () => {
+          let sentConfirm = false;
+          if (isDeliverableEmail(email)) {
+            const hasCv = Boolean(payload.cvPath);
+            const confirmation = vacancy
+              ? applicationConfirmation({ fullName, vacancyTitle: vacancy.title, hasCv })
+              : talentPoolConfirmation({ fullName, hasCv });
+            sentConfirm = await sendConfirmation(
+              email,
+              confirmation,
+              vacancy ? 'application_confirmation' : 'talent_pool_confirmation',
+              `candidate-confirm-${submissionId}`,
+            );
+          }
+
+          if (forwardRecipients.length > 0 && vacancy && applicationId) {
+            if (sentConfirm) {
+              await new Promise((r) => setTimeout(r, 600));
+            }
+            const parsedNotes = parseApplicationNotes(notes);
+            let remainingBudget = MAX_TOTAL_ATTACHMENT_BYTES;
+            const attachments: ResendAttachment[] = [];
+
+            const cvPrep = await prepareForwardDocument(
+              supabase,
+              freshlyUploadedCvPath,
+              buildAttachmentFilename(fullName, 'CV', freshlyUploadedCvPath ?? 'cv.pdf'),
+              remainingBudget,
+            );
+            if (cvPrep.attachment) {
+              attachments.push(cvPrep.attachment);
+              remainingBudget -= cvPrep.bytesUsed;
+            }
+
+            let coverPath: string | null = null;
+            if (
+              parsedNotes.coverLetterPath &&
+              SAFE_COVER_LETTER_PATH_RE.test(parsedNotes.coverLetterPath)
+            ) {
+              const { data: existingCoverFile } = await supabase
+                .from('candidate_files')
+                .select('id')
+                .eq('path', parsedNotes.coverLetterPath)
+                .maybeSingle();
+              if (!existingCoverFile) coverPath = parsedNotes.coverLetterPath;
+            }
+
+            const coverPrep = await prepareForwardDocument(
+              supabase,
+              coverPath,
+              buildAttachmentFilename(fullName, 'Cover_Letter', coverPath ?? 'cover.pdf'),
+              remainingBudget,
+            );
+            if (coverPrep.attachment) {
+              attachments.push(coverPrep.attachment);
+            }
+
+            const clientEmail = buildClientForwardEmail({
+              fullName,
+              email,
+              phone,
+              headline: profileFields.headline,
+              yearsExperience: profileFields.years_experience,
+              salaryExpectationUgx: profileFields.salary_expectation_ugx,
+              availability: profileFields.availability,
+              skills: skillsArray,
+              hasCv: Boolean(payload.cvPath),
+              cvAttached: Boolean(cvPrep.attachment),
+              cvDownloadUrl: cvPrep.signedUrl,
+              coverLetterAttached: Boolean(coverPrep.attachment),
+              coverLetterDownloadUrl: coverPrep.signedUrl,
+              vacancyTitle: vacancy.title,
+              screeningQuestions: questions,
+              screeningAnswers: payload.screeningAnswers ?? null,
+              notes,
+              submittedAt,
+            });
+
+            await sendResendEmail(
+              forwardRecipients,
+              clientEmail,
+              'client_application_forward',
+              `client-forward-${submissionId}`,
+              { attachments },
+            );
+          }
+        })(),
       );
     }
 

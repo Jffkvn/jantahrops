@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router';
-import { ArrowLeft, FileText, Pencil, X, LayoutGrid, List, Sparkles, Plus, Star, Scale } from 'lucide-react';
+import { ArrowLeft, FileText, Pencil, X, LayoutGrid, List, Sparkles, Plus, Star, Scale, Mail } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/cn';
 import { PageHeader } from '@/components/page-header';
@@ -138,7 +138,7 @@ export function VacancyPipelinePage() {
       />
 
       <div className="mb-6">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <StatusChip variant={VACANCY_STATUS_TONES[vacancy.status]}>
             {VACANCY_STATUS_LABELS[vacancy.status]}
           </StatusChip>
@@ -146,6 +146,12 @@ export function VacancyPipelinePage() {
             <span className="text-xs text-ink-muted">
               Live on the website job board
               {vacancy.published_at ? ` · posted ${formatDate(vacancy.published_at)}` : ''}
+            </span>
+          )}
+          {(vacancy.forwarding_emails?.length ?? 0) > 0 && (
+            <span className="inline-flex items-center gap-1 rounded-pill border border-border bg-surface-sunken px-2.5 py-0.5 text-xs text-ink-secondary">
+              <Mail className="h-3 w-3 text-primary" />
+              Also delivering to: {vacancy.forwarding_emails.join(', ')}
             </span>
           )}
         </div>
@@ -290,6 +296,7 @@ export function VacancyPipelinePage() {
           description: vacancy.description,
           requirements: vacancy.requirements,
           recruiterContext: vacancy.recruiter_context,
+          forwardingEmails: vacancy.forwarding_emails,
           location: vacancy.location,
           employmentType: vacancy.employment_type,
           salaryMinUgx: vacancy.salary_min_ugx,

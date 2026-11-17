@@ -155,3 +155,34 @@ export function serializeVacancyDescription(input: ParsedVacancyDescription): st
   return combined.length > 0 ? combined : null;
 }
 
+const FORWARDING_EMAIL_RE = /^[^\s@<>()",;]+@[^\s@<>()",;]+\.[a-z]{2,}$/i;
+export const MAX_FORWARDING_EMAILS = 5;
+
+export function parseForwardingEmails(raw: string): { valid: string[]; invalid: string[] } {
+  const parts = raw
+    .split(/[\s,;]+/)
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+
+  const valid: string[] = [];
+  const seen = new Set<string>();
+  const invalid: string[] = [];
+
+  for (const part of parts) {
+    if (!FORWARDING_EMAIL_RE.test(part)) {
+      invalid.push(part);
+      continue;
+    }
+    if (!seen.has(part)) {
+      seen.add(part);
+      valid.push(part);
+    }
+  }
+
+  return { valid, invalid };
+}
+
+export function formatForwardingEmails(emails: readonly string[] | null | undefined): string {
+  return (emails ?? []).map((e) => e.trim()).filter(Boolean).join(', ');
+}
+

@@ -505,6 +505,7 @@ export type VacancyRow = {
   description: string | null;
   requirements: string | null;
   recruiter_context: string | null;
+  forwarding_emails: string[];
   location: string | null;
   employment_type: EmploymentType | null;
   salary_min_ugx: number | null; // whole UGX

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Loader2, Plus, Trash2 } from 'lucide-react';
+import { Loader2, Mail, Plus, Trash2 } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -29,8 +29,11 @@ import { listOrganisations } from '@/features/finance/finance-api';
 import { useCreateVacancy, useUpdateVacancy, usePublishVacancy, useCloseVacancy } from './use-recruitment';
 import {
   EMPLOYMENT_TYPE_LABELS,
+  MAX_FORWARDING_EMAILS,
   VACANCY_CATEGORIES,
   VACANCY_STATUS_LABELS,
+  formatForwardingEmails,
+  parseForwardingEmails,
   parseVacancyDescription,
   serializeVacancyDescription,
 } from './recruitment-meta';
@@ -46,6 +49,20 @@ const schema = z.object({
   responsibilities: z.string(),
   requirements: z.string(),
   recruiterContext: z.string(),
+  forwardingEmails: z.string().superRefine((val, ctx) => {
+    const { valid, invalid } = parseForwardingEmails(val);
+    if (invalid.length > 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Invalid email address${invalid.length > 1 ? 'es' : ''}: ${invalid.join(', ')}`,
+      });
+    } else if (valid.length > MAX_FORWARDING_EMAILS) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Maximum ${MAX_FORWARDING_EMAILS} forwarding email addresses allowed.`,
+      });
+    }
+  }),
   location: z.string(),
   employmentType: z.string(),
   salaryMin: z.string(),
@@ -68,6 +85,7 @@ export interface VacancyEditorProps {
     description: string | null;
     requirements: string | null;
     recruiterContext?: string | null;
+    forwardingEmails?: string[] | null;
     location: string | null;
     employmentType: EmploymentType | null;
     salaryMinUgx: number | null;
@@ -91,6 +109,7 @@ function defaultValues(v: VacancyEditorProps['vacancy']): FormValues {
     responsibilities: parsedDesc.responsibilities,
     requirements: v?.requirements ?? '',
     recruiterContext: v?.recruiterContext ?? '',
+    forwardingEmails: formatForwardingEmails(v?.forwardingEmails),
     location: v?.location ?? '',
     employmentType: v?.employmentType ?? '',
     salaryMin: v?.salaryMinUgx != null ? v.salaryMinUgx.toString() : '',
@@ -179,6 +198,7 @@ export function VacancyEditorSheet({
         aboutRole: values.description,
         responsibilities: values.responsibilities,
       });
+      const { valid: parsedForwarding } = parseForwardingEmails(values.forwardingEmails);
       const payload = {
         title: values.title,
         organisationId: values.organisationId || null,
@@ -186,6 +206,7 @@ export function VacancyEditorSheet({
         description: combinedDescription,
         requirements: values.requirements || null,
         recruiterContext: values.recruiterContext.trim() || null,
+        forwardingEmails: parsedForwarding,
         location: values.location || null,
         employmentType: (values.employmentType as EmploymentType) || null,
         salaryMinUgx: values.salaryMin && parseUGX(values.salaryMin) != null ? Number(parseUGX(values.salaryMin)) : null,
@@ -354,6 +375,28 @@ export function VacancyEditorSheet({
               rows={2}
               {...register('recruiterContext')}
             />
+          </div>
+
+          <div className="space-y-1.5 rounded-control border border-border bg-surface-sunken/30 p-3.5">
+            <Label className="inline-flex items-center gap-1.5 text-sm font-medium text-ink" htmlFor="vacancy-forwarding-emails">
+              <Mail className="h-3.5 w-3.5 text-primary" />
+              Also deliver applications to (External client / CC emails)
+            </Label>
+            <p className="text-xs text-ink-secondary">
+              Optional, internal only (never shown on the public website). Whenever a candidate
+              applies on jantahr.com, JantaHR will also send a client-ready copy (screening answers,
+              cover note, and CV attachment / download link) to these addresses. Separate multiple
+              emails with commas.
+            </p>
+            <Input
+              id="vacancy-forwarding-emails"
+              className="mt-1.5 bg-surface"
+              placeholder="e.g. hr.lead@clientcompany.com, hiring.manager@clientcompany.com"
+              {...register('forwardingEmails')}
+            />
+            {errors.forwardingEmails?.message && (
+              <p className="text-xs text-danger">{errors.forwardingEmails.message}</p>
+            )}
           </div>
 
           {/* Screening Questions Builder */}

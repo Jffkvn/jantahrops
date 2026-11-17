@@ -105,6 +105,7 @@ export interface CreateVacancyInput {
   description?: string | null;
   requirements?: string | null;
   recruiterContext?: string | null;
+  forwardingEmails?: string[];
   location?: string | null;
   employmentType?: EmploymentType | null;
   salaryMinUgx?: number | null;
@@ -141,6 +142,7 @@ export async function createVacancy(input: CreateVacancyInput): Promise<VacancyR
       description: input.description ?? null,
       requirements: input.requirements ?? null,
       recruiter_context: input.recruiterContext ?? null,
+      forwarding_emails: input.forwardingEmails ?? [],
       location: input.location ?? null,
       employment_type: input.employmentType ?? null,
       salary_min_ugx: input.salaryMinUgx ?? null,
@@ -162,6 +164,8 @@ export interface UpdateVacancyInput {
   requirements?: string | null;
   recruiter_context?: string | null;
   recruiterContext?: string | null;
+  forwarding_emails?: string[];
+  forwardingEmails?: string[];
   location?: string | null;
   employment_type?: EmploymentType | null;
   employmentType?: EmploymentType | null;
@@ -190,6 +194,8 @@ export async function updateVacancy(id: string, patch: UpdateVacancyInput): Prom
   if (patch.requirements !== undefined) dbPatch.requirements = patch.requirements;
   if (patch.recruiter_context !== undefined) dbPatch.recruiter_context = patch.recruiter_context;
   else if (patch.recruiterContext !== undefined) dbPatch.recruiter_context = patch.recruiterContext;
+  if (patch.forwarding_emails !== undefined) dbPatch.forwarding_emails = patch.forwarding_emails;
+  else if (patch.forwardingEmails !== undefined) dbPatch.forwarding_emails = patch.forwardingEmails;
   if (patch.location !== undefined) dbPatch.location = patch.location;
   if (patch.employment_type !== undefined) dbPatch.employment_type = patch.employment_type;
   else if (patch.employmentType !== undefined) dbPatch.employment_type = patch.employmentType;

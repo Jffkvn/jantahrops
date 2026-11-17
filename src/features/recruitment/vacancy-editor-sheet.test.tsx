@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { VacancyEditorSheet } from './vacancy-editor-sheet';
+import { formatForwardingEmails, parseForwardingEmails } from './recruitment-meta';
 
 const { api, hooks } = vi.hoisted(() => ({
   api: { listOrganisations: vi.fn(() => Promise.resolve([])) },
@@ -76,5 +77,49 @@ describe('slug generation and collision handling', () => {
 
     fireEvent.click(submit);
     await waitFor(() => expect(screen.queryByText(/already exists/i)).toBeNull());
+  });
+});
+
+describe('vacancy application forwarding emails', () => {
+  it('parses comma/semicolon-separated emails, deduplicates, and flags invalid entries', () => {
+    const parsed = parseForwardingEmails('HR.Lead@Egypro.com, ops@egypro.com; hr.lead@egypro.com, not-an-email');
+    expect(parsed.valid).toEqual(['hr.lead@egypro.com', 'ops@egypro.com']);
+    expect(parsed.invalid).toEqual(['not-an-email']);
+    expect(formatForwardingEmails(parsed.valid)).toBe('hr.lead@egypro.com, ops@egypro.com');
+  });
+
+  it('validates forwarding emails and submits normalized array on create', async () => {
+    const mutateAsync = vi.fn(() => Promise.resolve({ id: 'new-id' }));
+    hooks.useCreateVacancy.mockReturnValue({ mutateAsync, isPending: false });
+
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <VacancyEditorSheet onOpenChange={() => {}} open />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.change(screen.getByPlaceholderText('Senior React Engineer'), {
+      target: { value: 'HR Assistant' },
+    });
+
+    const forwardingInput = screen.getByLabelText(/also deliver applications to/i);
+    fireEvent.change(forwardingInput, { target: { value: 'bad-email, hr@client.com' } });
+    fireEvent.click(screen.getByRole('button', { name: /create vacancy/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/invalid email address/i)).toBeInTheDocument();
+    });
+    expect(mutateAsync).not.toHaveBeenCalled();
+
+    fireEvent.change(forwardingInput, { target: { value: 'HR@Client.com, hiring@client.com' } });
+    fireEvent.click(screen.getByRole('button', { name: /create vacancy/i }));
+
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(1));
+    expect(mutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'HR Assistant',
+        forwardingEmails: ['hr@client.com', 'hiring@client.com'],
+      }),
+    );
   });
 });

@@ -61,7 +61,7 @@ export function applicationConfirmation(input: {
         kind: 'list',
         items: [
           'Our recruitment team reviews every application against the requirements of the role.',
-          "If you're shortlisted, we'll contact you by email or phone to arrange the next step.",
+          'Only shortlisted candidates will be contacted — if you are shortlisted, we will reach out by email or phone to arrange the next step.',
           'You do not need to apply again. If your details change, reply to this email and we will update your application.',
         ],
       },

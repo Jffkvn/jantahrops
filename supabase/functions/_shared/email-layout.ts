@@ -69,10 +69,10 @@ export interface EmailContent {
   preheader: string;
   heading: string;
   blocks: Block[];
-  /** Shown under the blocks. Omit for internal alerts. */
+  /** Shown under the blocks. Omit for internal/client alerts. */
   signOff?: boolean;
-  /** 'public' adds contact details, socials and the privacy link. */
-  audience: 'public' | 'team';
+  /** 'public' = candidate/lead ack; 'team' = internal JantaHR Ops alert; 'client' = external client forward. */
+  audience: 'public' | 'team' | 'client';
 }
 
 export function renderEmailHtml(subject: string, content: EmailContent): string {
@@ -90,6 +90,9 @@ export function renderEmailHtml(subject: string, content: EmailContent): string 
           .map((s) => `<a href="${s.url}" style="color:${C.primary};">${escapeHtml(s.label)}</a>`)
           .join(' · ')} · <a href="${BRAND.site}" style="color:${C.primary};">jantahr.com</a> · <a href="${BRAND.privacyUrl}" style="color:${C.primary};">Privacy Policy</a></p>
 <p style="margin:0;">You are receiving this email because you submitted a form on jantahr.com. Replies to this email reach our team at ${BRAND.email}.</p>`
+      : content.audience === 'client'
+      ? `<p style="margin:0 0 8px;"><strong style="color:${C.deep};">Shared in confidence by ${escapeHtml(BRAND.legalName)}</strong> · <a href="mailto:${BRAND.email}" style="color:${C.primary};">${BRAND.email}</a></p>
+<p style="margin:0;">You are receiving this candidate application because your address is configured for this recruitment mandate. Applicant records are shared strictly for evaluating candidates in line with the Uganda Data Protection and Privacy Act, 2019.</p>`
       : `<p style="margin:0;">Sent automatically by JantaHR Ops from a jantahr.com form. Reply to this email to answer the sender directly.</p>`;
 
   return `<!doctype html>
@@ -147,6 +150,12 @@ export function renderEmailText(content: EmailContent): string {
       `${BRAND.legalName} · ${BRAND.location}`,
       `${BRAND.email} · ${BRAND.phones.join(' · ')}`,
       `Privacy Policy: ${BRAND.privacyUrl}`,
+    );
+  } else if (content.audience === 'client') {
+    out.push(
+      '--',
+      `Shared in confidence by ${BRAND.legalName} (${BRAND.email})`,
+      'Applicant records are shared strictly for evaluating candidates in line with the Uganda Data Protection and Privacy Act, 2019.',
     );
   }
   return out.join('\n').trim();

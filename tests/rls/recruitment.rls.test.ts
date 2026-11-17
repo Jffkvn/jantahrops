@@ -412,6 +412,7 @@ describe('Recruitment Foundation (Prompt 3.1)', () => {
       expect(first).not.toHaveProperty('organisation_id');
       expect(first).not.toHaveProperty('owner_id');
       expect(first).not.toHaveProperty('notes');
+      expect(first).not.toHaveProperty('forwarding_emails');
       expect(first).toHaveProperty('employment_type');
       expect(first).toHaveProperty('slug');
     });
