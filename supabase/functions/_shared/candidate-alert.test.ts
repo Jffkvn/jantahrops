@@ -47,6 +47,7 @@ Deno.test('application alert pairs answers with questions in order, extras last'
   assertStringIncludes(text, 'Cover letter and notes:\nI love payroll.');
   assert(!text.includes('[object Object]'));
   assertStringIncludes(html, 'Payroll Officer');
+  assert(!html.includes('white-space:nowrap'));
 });
 
 Deno.test('talent pool alert has its own subject and no screening section', () => {

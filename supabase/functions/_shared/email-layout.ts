@@ -31,6 +31,7 @@ export type Block =
   | { kind: 'list'; items: string[] }
   | { kind: 'callout'; title: string; text: string; link?: { label: string; url: string } }
   | { kind: 'details'; rows: { label: string; value: string }[] }
+  | { kind: 'qa'; items: { question: string; answer: string }[] }
   | { kind: 'quote'; title: string; text: string }
   | { kind: 'button'; label: string; url: string };
 
@@ -54,9 +55,16 @@ function renderBlock(b: Block): string {
       return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 16px;border-collapse:collapse;font-size:14px;">${b.rows
         .map(
           (r) =>
-            `<tr><td style="padding:8px 12px 8px 0;border-bottom:1px solid ${C.border};color:${C.muted};white-space:nowrap;vertical-align:top;width:1%;">${escapeHtml(r.label)}</td><td style="padding:8px 0;border-bottom:1px solid ${C.border};color:${C.deep};vertical-align:top;word-break:break-word;">${textToHtml(r.value)}</td></tr>`,
+            `<tr><td style="padding:8px 16px 8px 0;border-bottom:1px solid ${C.border};color:${C.muted};width:34%;min-width:110px;vertical-align:top;line-height:1.45;">${escapeHtml(r.label)}</td><td style="padding:8px 0;border-bottom:1px solid ${C.border};color:${C.deep};vertical-align:top;overflow-wrap:break-word;word-break:normal;line-height:1.45;">${textToHtml(r.value)}</td></tr>`,
         )
         .join('')}</table>`;
+    case 'qa':
+      return `<div style="margin:0 0 16px;">${b.items
+        .map(
+          (item) =>
+            `<div style="margin:0 0 10px;padding:12px 14px;background:${C.offwhite};border:1px solid ${C.border};border-radius:8px;"><div style="font-size:13px;font-weight:600;color:${C.muted};margin:0 0 4px;line-height:1.45;">${textToHtml(item.question)}</div><div style="font-size:14px;font-weight:600;color:${C.deep};line-height:1.5;overflow-wrap:break-word;">${textToHtml(item.answer)}</div></div>`,
+        )
+        .join('')}</div>`;
     case 'button':
       return `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:8px 0 16px;border-collapse:separate;"><tr><td style="background:${C.primary};border-radius:8px;"><a href="${escapeHtml(b.url)}" style="display:inline-block;padding:11px 20px;font-family:${FONT};font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;">${escapeHtml(b.label)}</a></td></tr></table>`;
     case 'quote':
@@ -134,6 +142,9 @@ export function renderEmailText(content: EmailContent): string {
         break;
       case 'details':
         out.push(...b.rows.map((r) => `${r.label}: ${r.value}`), '');
+        break;
+      case 'qa':
+        out.push(...b.items.map((item) => `${item.question}: ${item.answer}`), '');
         break;
       case 'quote':
         out.push(`${b.title}:`, b.text, '');

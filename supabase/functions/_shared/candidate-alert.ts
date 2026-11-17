@@ -194,16 +194,16 @@ export function buildCandidateAlert(input: CandidateAlertInput): RenderedEmail {
   const answers = input.screeningAnswers ?? {};
   const answerKeys = Object.keys(answers);
   if (answerKeys.length) {
-    const answerRows: { label: string; value: string }[] = [];
+    const qaItems: { question: string; answer: string }[] = [];
     const asked = new Set<string>();
     for (const q of input.screeningQuestions ?? []) {
       asked.add(q.id);
-      answerRows.push({ label: oneLine(q.question), value: formatAnswer(answers[q.id]) });
+      qaItems.push({ question: oneLine(q.question), answer: formatAnswer(answers[q.id]) });
     }
     for (const key of answerKeys) {
-      if (!asked.has(key)) answerRows.push({ label: key, value: formatAnswer(answers[key]) });
+      if (!asked.has(key)) qaItems.push({ question: key, answer: formatAnswer(answers[key]) });
     }
-    blocks.push({ kind: 'heading', text: 'Screening answers' }, { kind: 'details', rows: answerRows });
+    blocks.push({ kind: 'heading', text: 'Screening answers' }, { kind: 'qa', items: qaItems });
   }
 
   const notes = (input.notes ?? '').trim();
@@ -297,16 +297,16 @@ export function buildClientForwardEmail(input: ClientForwardInput): RenderedEmai
   const answers = input.screeningAnswers ?? {};
   const answerKeys = Object.keys(answers);
   if (answerKeys.length > 0) {
-    const answerRows: { label: string; value: string }[] = [];
+    const qaItems: { question: string; answer: string }[] = [];
     const asked = new Set<string>();
     for (const q of input.screeningQuestions ?? []) {
       asked.add(q.id);
-      answerRows.push({ label: oneLine(q.question), value: formatAnswer(answers[q.id]) });
+      qaItems.push({ question: oneLine(q.question), answer: formatAnswer(answers[q.id]) });
     }
     for (const key of answerKeys) {
-      if (!asked.has(key)) answerRows.push({ label: key, value: formatAnswer(answers[key]) });
+      if (!asked.has(key)) qaItems.push({ question: key, answer: formatAnswer(answers[key]) });
     }
-    blocks.push({ kind: 'heading', text: 'Screening Answers' }, { kind: 'details', rows: answerRows });
+    blocks.push({ kind: 'heading', text: 'Screening Answers' }, { kind: 'qa', items: qaItems });
   }
 
   const coverParts: string[] = [];
