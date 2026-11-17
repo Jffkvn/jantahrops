@@ -27,14 +27,23 @@ import { Switch } from '@/components/ui/switch';
 import { dateInputToISO, parseUGX, toDateInputValue } from '@/lib/format';
 import { listOrganisations } from '@/features/finance/finance-api';
 import { useCreateVacancy, useUpdateVacancy, usePublishVacancy, useCloseVacancy } from './use-recruitment';
-import { EMPLOYMENT_TYPE_LABELS, VACANCY_STATUS_LABELS } from './recruitment-meta';
+import {
+  EMPLOYMENT_TYPE_LABELS,
+  VACANCY_CATEGORIES,
+  VACANCY_STATUS_LABELS,
+  parseVacancyDescription,
+  serializeVacancyDescription,
+} from './recruitment-meta';
 import type { EmploymentType, VacancyStatus, ScreeningQuestionRow, ScreeningQuestionType } from '@/types/database';
 
 const schema = z.object({
   title: z.string().min(1, 'A title is required.'),
   organisationId: z.string(),
+  category: z.string(),
+  clientLabel: z.string(),
   summary: z.string(),
   description: z.string(),
+  responsibilities: z.string(),
   requirements: z.string(),
   recruiterContext: z.string(),
   location: z.string(),
@@ -71,11 +80,15 @@ export interface VacancyEditorProps {
 }
 
 function defaultValues(v: VacancyEditorProps['vacancy']): FormValues {
+  const parsedDesc = parseVacancyDescription(v?.description);
   return {
     title: v?.title ?? '',
     organisationId: v?.organisationId ?? '',
+    category: parsedDesc.category,
+    clientLabel: parsedDesc.clientLabel,
     summary: v?.summary ?? '',
-    description: v?.description ?? '',
+    description: parsedDesc.aboutRole,
+    responsibilities: parsedDesc.responsibilities,
     requirements: v?.requirements ?? '',
     recruiterContext: v?.recruiterContext ?? '',
     location: v?.location ?? '',
@@ -160,11 +173,17 @@ export function VacancyEditorSheet({
   const onSubmit = async (values: FormValues) => {
     setServerError(null);
     try {
+      const combinedDescription = serializeVacancyDescription({
+        category: values.category,
+        clientLabel: values.clientLabel,
+        aboutRole: values.description,
+        responsibilities: values.responsibilities,
+      });
       const payload = {
         title: values.title,
         organisationId: values.organisationId || null,
         summary: values.summary || null,
-        description: values.description || null,
+        description: combinedDescription,
         requirements: values.requirements || null,
         recruiterContext: values.recruiterContext.trim() || null,
         location: values.location || null,
@@ -217,6 +236,32 @@ export function VacancyEditorSheet({
             <Input placeholder="Senior React Engineer" {...register('title')} />
           </Field>
 
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Field label="Category / Department">
+              <Select
+                onValueChange={(v) => setValue('category', v)}
+                value={watch('category')}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select category" />
+                </SelectTrigger>
+                <SelectContent>
+                  {VACANCY_CATEGORIES.map((cat) => (
+                    <SelectItem key={cat} value={cat}>
+                      {cat}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field label="Public client / industry label">
+              <Input
+                placeholder="e.g. Telecom & Fibre-Network Client"
+                {...register('clientLabel')}
+              />
+            </Field>
+          </div>
+
           <OrganisationField
             onSelect={(id) => setValue('organisationId', id, { shouldValidate: true })}
             value={watch('organisationId')}
@@ -267,20 +312,29 @@ export function VacancyEditorSheet({
             <Input type="date" {...register('closesDate')} />
           </Field>
 
-          <Field label="Description">
+          <Field label="About the role (Description)">
             <Textarea
               className="min-h-0"
-              placeholder="Full description for the job board."
+              placeholder="Role overview and purpose shown under 'About the Role'."
               rows={4}
               {...register('description')}
             />
           </Field>
 
-          <Field label="Requirements">
+          <Field label="What you'll do (Key responsibilities)">
             <Textarea
               className="min-h-0"
-              placeholder="One requirement per line."
-              rows={3}
+              placeholder="One responsibility per line (shown under 'What You'll Do' on the job board)."
+              rows={5}
+              {...register('responsibilities')}
+            />
+          </Field>
+
+          <Field label="What we need (Requirements)">
+            <Textarea
+              className="min-h-0"
+              placeholder="One requirement per line (shown under 'What We Need' on the job board)."
+              rows={4}
               {...register('requirements')}
             />
           </Field>

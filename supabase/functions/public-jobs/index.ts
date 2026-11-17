@@ -89,16 +89,84 @@ interface Job {
   id: string;
   slug: string;
   title: string;
+  category?: string;
+  company?: string;
   location: string | null;
   employmentType: string | null;
   summary: string | null;
   description: string | null;
+  responsibilities?: string[];
   requirements: string | null;
   salaryMin: number | null;
   salaryMax: number | null;
   screeningQuestions?: ScreeningQuestion[];
   postedAt: string | null;
   closesAt: string | null;
+}
+
+const EMPLOYMENT_LABELS: Record<string, string> = {
+  full_time: 'Full time',
+  part_time: 'Part time',
+  contract: 'Contract',
+  temporary: 'Temporary',
+  internship: 'Internship',
+};
+
+function parseDescriptionMetadata(raw: string | null, title: string): {
+  category: string;
+  company: string;
+  aboutRole: string | null;
+  responsibilities: string[] | undefined;
+} {
+  let text = (raw ?? '').replace(/\r\n/g, '\n').trim();
+  let category = '';
+  let company = '';
+
+  const catMatch = /^\[Category:\s*([^\]]+)\]\s*\n?/i.exec(text);
+  if (catMatch) {
+    category = (catMatch[1] ?? '').trim();
+    text = text.slice(catMatch[0].length).trim();
+  }
+
+  const clientMatch = /^\[Client:\s*([^\]]+)\]\s*\n?/i.exec(text);
+  if (clientMatch) {
+    company = (clientMatch[1] ?? '').trim();
+    text = text.slice(clientMatch[0].length).trim();
+  }
+
+  text = text.replace(/^about\s+the\s+role\s*\n+/i, '').trim();
+
+  let aboutRole = text;
+  let responsibilities: string[] | undefined = undefined;
+
+  const splitRegex = /\n+(?:###\s*What You['’]ll Do|What You['’]ll Do|###\s*Key Responsibilities|Key Responsibilities)\s*\n+/i;
+  const parts = text.split(splitRegex);
+  if (parts.length >= 2) {
+    aboutRole = (parts[0] ?? '').trim();
+    const list = parts
+      .slice(1)
+      .join('\n')
+      .split('\n')
+      .map((line) => line.replace(/^[•\-*]\s*/, '').trim())
+      .filter(Boolean);
+    if (list.length > 0) responsibilities = list;
+  }
+
+  if (!category) {
+    const t = title.toLowerCase();
+    if (/\b(hr|human resource|people|talent|recruit)\b/.test(t)) category = 'Human Resources';
+    else if (/\b(finance|account|audit|tax|payroll|cfo)\b/.test(t)) category = 'Finance & Accounting';
+    else if (/\b(engineer|developer|software|tech|it|data|devops)\b/.test(t)) category = 'Technology & Engineering';
+    else if (/\b(sales|business development|account manager|commercial|marketing)\b/.test(t)) category = 'Sales & Business Development';
+    else category = 'Human Resources';
+  }
+
+  return {
+    category,
+    company: company || 'Confidential Client',
+    aboutRole: aboutRole || null,
+    responsibilities,
+  };
 }
 
 Deno.serve(async (req: Request) => {
@@ -132,21 +200,28 @@ Deno.serve(async (req: Request) => {
     return json({ error: 'Could not load jobs.' }, 500, origin);
   }
 
-  const jobs: Job[] = (data as VacancyRow[]).map((v) => ({
-    id: v.id,
-    slug: v.slug,
-    title: v.title,
-    location: v.location,
-    employmentType: v.employment_type,
-    summary: v.summary,
-    description: v.description,
-    requirements: v.requirements,
-    salaryMin: v.salary_min_ugx,
-    salaryMax: v.salary_max_ugx,
-    screeningQuestions: v.screening_questions || [],
-    postedAt: v.published_at,
-    closesAt: v.closes_at,
-  }));
+  const jobs: Job[] = (data as VacancyRow[]).map((v) => {
+    const parsed = parseDescriptionMetadata(v.description, v.title);
+    const empType = v.employment_type ? (EMPLOYMENT_LABELS[v.employment_type] ?? v.employment_type) : 'Full time';
+    return {
+      id: v.id,
+      slug: v.slug,
+      title: v.title,
+      category: parsed.category,
+      company: parsed.company,
+      location: v.location,
+      employmentType: empType,
+      summary: v.summary,
+      description: parsed.aboutRole,
+      responsibilities: parsed.responsibilities,
+      requirements: v.requirements,
+      salaryMin: v.salary_min_ugx,
+      salaryMax: v.salary_max_ugx,
+      screeningQuestions: v.screening_questions || [],
+      postedAt: v.published_at,
+      closesAt: v.closes_at,
+    };
+  });
 
   return json({ jobs }, 200, origin);
 });
