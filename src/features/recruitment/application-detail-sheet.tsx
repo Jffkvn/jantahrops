@@ -359,7 +359,7 @@ function ApplicationDetailWorkspace({
   }
   if (parsedNotes.coverLetterPath) {
     contactLinks.push({
-      label: 'Cover Letter PDF',
+      label: 'Cover Letter',
       onClick: () => void openCoverLetter(),
     });
   }
@@ -843,7 +843,7 @@ function ApplicationDetailWorkspace({
                         <FileText className="h-5 w-5 shrink-0 text-primary" />
                         <div className="min-w-0">
                           <p className="truncate text-md font-bold text-ink">
-                            {parsedNotes.coverLetterFilename ?? 'Cover Letter PDF'}
+                            {parsedNotes.coverLetterFilename ?? 'Cover Letter Document'}
                           </p>
                           <p className="text-sm font-medium text-ink-secondary">
                             Uploaded cover letter document

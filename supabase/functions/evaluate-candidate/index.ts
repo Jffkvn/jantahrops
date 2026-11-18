@@ -13,6 +13,7 @@
 //   - Treats all CV text, cover notes, and screening answers as untrusted data
 //     to defend against prompt injection / white-text CV gaming.
 
+import { inflateRawSync } from 'node:zlib';
 import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2';
 
 const DEFAULT_MODEL = 'gpt-6-luna';
@@ -65,13 +66,211 @@ function uint8ToBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
+const DOCX_XML_ENTRY_RE = /^word\/(header\d*|document|footnotes|endnotes|footer\d*)\.xml$/i;
+
+/** Convert WordprocessingML XML into clean, readable plain text. */
+function xmlToPlainText(xml: string): string {
+  return xml
+    .replace(/<w:delText\b[^>]*>[\s\S]*?<\/w:delText>/gi, '')
+    .replace(/<w:instrText\b[^>]*>[\s\S]*?<\/w:instrText>/gi, '')
+    .replace(/<\/w:p>/gi, '\n')
+    .replace(/<w:(?:br|cr)\b[^>]*\/?>/gi, '\n')
+    .replace(/<\/w:tr>/gi, '\n')
+    .replace(/<w:tab\b[^>]*\/?>/gi, '\t')
+    .replace(/<\/w:tc>/gi, '\t')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&#(\d+);/g, (_, d) => {
+      const code = Number(d);
+      return Number.isFinite(code) && code > 0 ? String.fromCodePoint(code) : '';
+    })
+    .replace(/&#x([0-9a-f]+);/gi, (_, h) => {
+      const code = parseInt(h, 16);
+      return Number.isFinite(code) && code > 0 ? String.fromCodePoint(code) : '';
+    })
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\n[ \t]+/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+/**
+ * Unpack WordprocessingML XML entries from a compressed `.docx` ZIP archive
+ * without external dependencies (uses Node's built-in `inflateRawSync`).
+ */
+function extractDocxText(bytes: Uint8Array): string {
+  if (bytes.length < 30) return '';
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const decoder = new TextDecoder('utf-8', { fatal: false });
+  const parts: { name: string; text: string }[] = [];
+
+  // Primary path: locate End of Central Directory (0x06054b50) and walk Central Directory entries.
+  let eocdOffset = -1;
+  for (let i = bytes.length - 22; i >= Math.max(0, bytes.length - 65557); i--) {
+    if (view.getUint32(i, true) === 0x06054b50) {
+      eocdOffset = i;
+      break;
+    }
+  }
+
+  if (eocdOffset >= 0 && eocdOffset + 20 <= bytes.length) {
+    const cdEntries = view.getUint16(eocdOffset + 10, true);
+    let pos = view.getUint32(eocdOffset + 16, true);
+    for (let i = 0; i < cdEntries && pos + 46 <= bytes.length; i++) {
+      if (view.getUint32(pos, true) !== 0x02014b50) break;
+      const method = view.getUint16(pos + 10, true);
+      const compSize = view.getUint32(pos + 20, true);
+      const nameLen = view.getUint16(pos + 28, true);
+      const extraLen = view.getUint16(pos + 30, true);
+      const commentLen = view.getUint16(pos + 32, true);
+      const localOffset = view.getUint32(pos + 42, true);
+      if (pos + 46 + nameLen > bytes.length) break;
+      const name = decoder.decode(bytes.subarray(pos + 46, pos + 46 + nameLen));
+      if (DOCX_XML_ENTRY_RE.test(name) && localOffset + 30 <= bytes.length) {
+        try {
+          if (view.getUint32(localOffset, true) === 0x04034b50) {
+            const lNameLen = view.getUint16(localOffset + 26, true);
+            const lExtraLen = view.getUint16(localOffset + 28, true);
+            const dataStart = localOffset + 30 + lNameLen + lExtraLen;
+            if (dataStart + compSize <= bytes.length) {
+              const rawSlice = bytes.subarray(dataStart, dataStart + compSize);
+              const xmlBytes =
+                method === 8 ? inflateRawSync(rawSlice) : method === 0 ? rawSlice : null;
+              if (xmlBytes) {
+                const text = xmlToPlainText(decoder.decode(xmlBytes));
+                if (text) parts.push({ name, text });
+              }
+            }
+          }
+        } catch {
+          // Skip malformed ZIP entry while keeping other readable parts.
+        }
+      }
+      pos += 46 + nameLen + extraLen + commentLen;
+    }
+  } else {
+    // Fallback scan of local file headers (0x04034b50) when EOCD is absent/truncated.
+    for (let offset = 0; offset + 30 <= bytes.length; ) {
+      if (view.getUint32(offset, true) !== 0x04034b50) {
+        offset++;
+        continue;
+      }
+      const method = view.getUint16(offset + 8, true);
+      const compSize = view.getUint32(offset + 18, true);
+      const nameLen = view.getUint16(offset + 26, true);
+      const extraLen = view.getUint16(offset + 28, true);
+      const dataStart = offset + 30 + nameLen + extraLen;
+      if (offset + 30 + nameLen > bytes.length || dataStart + compSize > bytes.length) break;
+      const name = decoder.decode(bytes.subarray(offset + 30, offset + 30 + nameLen));
+      if (DOCX_XML_ENTRY_RE.test(name) && compSize > 0) {
+        try {
+          const rawSlice = bytes.subarray(dataStart, dataStart + compSize);
+          const xmlBytes =
+            method === 8 ? inflateRawSync(rawSlice) : method === 0 ? rawSlice : null;
+          if (xmlBytes) {
+            const text = xmlToPlainText(decoder.decode(xmlBytes));
+            if (text) parts.push({ name, text });
+          }
+        } catch {
+          // Skip malformed local ZIP entry.
+        }
+      }
+      offset = compSize > 0 ? dataStart + compSize : offset + 4;
+    }
+  }
+
+  const orderScore = (name: string): number =>
+    name.toLowerCase().includes('header')
+      ? 1
+      : name.toLowerCase().includes('document.xml')
+        ? 2
+        : 3;
+  parts.sort((a, b) => orderScore(a.name) - orderScore(b.name));
+  return parts.map((p) => p.text).join('\n\n').trim();
+}
+
+const OLE2_NOISE_RE =
+  /^(?:Root Entry|WordDocument|[01]Table|CompObj|SummaryInformation|DocumentSummaryInformation|Normal(?:\.dotm?)?|Default Paragraph Font|Microsoft(?: Office)? Word|MSWordDoc|Word\.Document\.\d+|Times New Roman|Calibri|Cambria|Arial|Tahoma|Heading \d+)$/i;
+
+/**
+ * Extract readable text runs from legacy binary `.doc` (OLE2) containers,
+ * handling both UTF-16LE runs (where ASCII chars alternate with 0x00) and
+ * 8-bit ASCII runs while filtering Word binary boilerplate.
+ */
+function extractLegacyDocText(bytes: Uint8Array): string {
+  const latin1 = new TextDecoder('latin1').decode(bytes);
+  const segments: string[] = [];
+
+  const utf16Runs = latin1.match(/(?:[\x20-\x7E\r\n\t]\x00){5,}/g) ?? [];
+  for (const run of utf16Runs) {
+    const cleaned = run
+      .replace(/\x00/g, '')
+      .replace(/\r\n?/g, '\n')
+      .replace(/[ \t]{2,}/g, ' ')
+      .trim();
+    if (cleaned.length >= 5 && /[a-zA-Z]{2,}/.test(cleaned) && !OLE2_NOISE_RE.test(cleaned)) {
+      segments.push(cleaned);
+    }
+  }
+
+  const asciiRuns = latin1.match(/[\x20-\x7E\r\n\t]{8,}/g) ?? [];
+  for (const run of asciiRuns) {
+    const cleaned = run
+      .replace(/\r\n?/g, '\n')
+      .replace(/[ \t]{2,}/g, ' ')
+      .trim();
+    if (
+      cleaned.length >= 8 &&
+      /[a-zA-Z]{2,}/.test(cleaned) &&
+      !OLE2_NOISE_RE.test(cleaned) &&
+      !segments.some((existing) => existing.includes(cleaned))
+    ) {
+      segments.push(cleaned);
+    }
+  }
+
+  return segments
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 /**
  * Fallback text extractor for .docx / .doc / raw buffers when native PDF input
- * is not used. Extracts readable XML/UTF-8 runs while stripping binary noise.
+ * is not used. Unpacks compressed `.docx` XML parts, decodes legacy `.doc`
+ * UTF-16LE/ASCII text runs, and falls back to plain UTF-8 text stripping.
  */
 function extractReadableTextFromBytes(bytes: Uint8Array): string {
+  // ZIP magic (PK\x03\x04) -> .docx
+  if (
+    bytes.length >= 4 &&
+    bytes[0] === 0x50 &&
+    bytes[1] === 0x4b &&
+    bytes[2] === 0x03 &&
+    bytes[3] === 0x04
+  ) {
+    const docxText = extractDocxText(bytes);
+    if (docxText) return docxText.slice(0, 30_000);
+  }
+
+  // OLE2 Compound Document magic (\xD0\xCF\x11\xE0) -> legacy .doc
+  if (
+    bytes.length >= 8 &&
+    bytes[0] === 0xd0 &&
+    bytes[1] === 0xcf &&
+    bytes[2] === 0x11 &&
+    bytes[3] === 0xe0
+  ) {
+    const docText = extractLegacyDocText(bytes);
+    if (docText) return docText.slice(0, 30_000);
+  }
+
   const raw = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
-  // Strip XML/HTML tags (helpful for uncompressed XML sections or .doc text runs)
+  // Strip XML/HTML tags for plain XML or text files
   const withoutTags = raw
     .replace(/<w:p[^>]*>/gi, '\n')
     .replace(/<[^>]+>/g, ' ')
@@ -172,6 +371,7 @@ async function parseCandidateCvIfNeeded(
     existingParsed &&
     typeof existingParsed === 'object' &&
     existingParsed.parser_version === 1 &&
+    existingParsed.readability !== 'unreadable' &&
     (!candidate.cv_file_id || existingParsed.cv_file_id === candidate.cv_file_id)
   ) {
     return { cvParsed: existingParsed, candidateRow: candidate as Record<string, unknown> };

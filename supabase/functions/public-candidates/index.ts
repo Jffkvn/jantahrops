@@ -114,6 +114,13 @@ function extensionForMime(mime: string): string {
   }
 }
 
+function mimeForPath(path: string): string {
+  const lower = path.toLowerCase();
+  if (lower.endsWith('.pdf')) return 'application/pdf';
+  if (lower.endsWith('.doc')) return 'application/msword';
+  return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+}
+
 function isSafeCvStoragePath(path: string | null | undefined): path is string {
   if (!path || path.includes('..')) return false;
   return SAFE_CV_PATH_RE.test(path.trim());
@@ -438,7 +445,7 @@ Deno.serve(async (req: Request) => {
             bucket: BUCKET,
             path: cleanCvPath,
             filename: cleanCvPath.split('/').pop() ?? cleanCvPath,
-            mime: 'application/octet-stream',
+            mime: mimeForPath(cleanCvPath),
             size_bytes: 0,
           })
           .select('id')
