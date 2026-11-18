@@ -617,7 +617,7 @@ function ApplicationDetailWorkspace({
               <button
                 className="inline-flex items-center gap-1.5 rounded-control border border-border-strong bg-surface px-3.5 py-1.5 text-base font-semibold text-ink transition-colors hover:bg-surface-sunken disabled:opacity-50"
                 disabled={evaluateApp.isPending}
-                onClick={() => void handleRunEvaluation(false)}
+                onClick={() => void handleRunEvaluation(true)}
                 type="button"
               >
                 <RefreshCw
@@ -976,7 +976,7 @@ function ApplicationDetailWorkspace({
         <MatchBreakdownSection
           assessment={assessment}
           isEvaluating={evaluateApp.isPending}
-          onEvaluate={() => void handleRunEvaluation(false)}
+          onEvaluate={() => void handleRunEvaluation(true)}
         />
       </section>
 

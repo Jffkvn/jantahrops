@@ -609,8 +609,8 @@ Deno.serve(async (req: Request) => {
     auth: { persistSession: false },
   });
 
-  // Authorise either the service-role key (internal background trigger) or an
-  // authenticated Ops user.
+  // Authorise either the service-role key (internal background trigger or project
+  // service key) or an authenticated Ops user.
   const isServiceRole = bearerToken === serviceRoleKey;
   if (!isServiceRole) {
     const {
@@ -618,7 +618,16 @@ Deno.serve(async (req: Request) => {
       error: authErr,
     } = await supabase.auth.getUser(bearerToken);
     if (authErr || !user) {
-      return json({ ok: false, error: 'Invalid or expired session.' }, 401, origin);
+      const probeClient = createClient(supabaseUrl, bearerToken, {
+        auth: { persistSession: false },
+      });
+      const { error: adminErr } = await probeClient.auth.admin.listUsers({
+        page: 1,
+        perPage: 1,
+      });
+      if (adminErr) {
+        return json({ ok: false, error: 'Invalid or expired session.' }, 401, origin);
+      }
     }
   }
 
