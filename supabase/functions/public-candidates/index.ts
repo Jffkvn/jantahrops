@@ -319,6 +319,37 @@ Deno.serve(async (req: Request) => {
     );
   }
 
+  if (payload.action === 'send_recovered_confirmation') {
+    const authHeader = req.headers.get('authorization') ?? '';
+    const bearer = authHeader.replace(/^Bearer\s+/i, '').trim();
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    if (!bearer) return json({ ok: false, error: 'Unauthorized.' }, 401, origin);
+    if (bearer !== serviceRoleKey) {
+      const probe = createClient(supabaseUrl, bearer, { auth: { persistSession: false } });
+      const { error: adminErr } = await probe.auth.admin.listUsers({ page: 1, perPage: 1 });
+      if (adminErr) return json({ ok: false, error: 'Unauthorized.' }, 401, origin);
+    }
+    const recipEmail = (payload.email ?? '').trim().toLowerCase();
+    const recipName = (payload.fullName ?? '').trim() || 'Applicant';
+    const vacTitle = (payload.headline ?? '').trim();
+    const idempKey = (payload.submittedAt ?? '').trim() || `recovered-${recipEmail}`;
+    const hasCv = Boolean(payload.cvPath);
+    if (!isDeliverableEmail(recipEmail)) {
+      return json({ ok: false, error: 'Not deliverable.' }, 400, origin);
+    }
+    const confirmation = vacTitle
+      ? applicationConfirmation({ fullName: recipName, vacancyTitle: vacTitle, hasCv })
+      : talentPoolConfirmation({ fullName: recipName, hasCv });
+    const sent = await sendConfirmation(
+      recipEmail,
+      confirmation,
+      vacTitle ? 'application_confirmation' : 'talent_pool_confirmation',
+      `candidate-confirm-${idempKey}`,
+    );
+    return json({ ok: sent }, sent ? 200 : 502, origin);
+  }
+
   // Step 2 — registration proper. Honeypot first, same as public-leads.
   if (payload.honeypot && payload.honeypot.trim() !== '') {
     return json({ ok: true }, 200, origin);
