@@ -18,8 +18,12 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     // Source maps locally; never on hosted builds (Netlify sets NETLIFY=true,
-    // Vercel sets VERCEL=1), where they would publish the app's source code.
-    sourcemap: process.env.NETLIFY !== 'true' && process.env.VERCEL !== '1',
+    // Vercel sets VERCEL=1, Cloudflare Pages sets CF_PAGES=1), where they would
+    // publish the app's source code.
+    sourcemap:
+      process.env.NETLIFY !== 'true' &&
+      process.env.VERCEL !== '1' &&
+      process.env.CF_PAGES !== '1',
     target: 'es2022',
   },
 });
