@@ -121,6 +121,49 @@ function mimeForPath(path: string): string {
   return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 }
 
+type AvailabilityStatus = 'immediate' | 'one_month' | 'three_months' | 'not_looking';
+
+function normalizeAvailability(raw: string | null | undefined): AvailabilityStatus | null {
+  const val = (raw ?? '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+  if (!val) return null;
+  if (val === 'immediate' || val === 'immediately') return 'immediate';
+  if (
+    val === 'two_weeks' ||
+    val === '2_weeks' ||
+    val === '2_weeks_notice' ||
+    val === 'two_weeks_notice' ||
+    val === '14_days' ||
+    val === 'one_month' ||
+    val === '1_month' ||
+    val === '1_month_notice' ||
+    val === 'one_month_notice' ||
+    val === '30_days'
+  ) {
+    return 'one_month';
+  }
+  if (
+    val === '60_days' ||
+    val === '2_months' ||
+    val === 'two_months' ||
+    val === '2_months_notice' ||
+    val === '90_days' ||
+    val === 'three_months' ||
+    val === '3_months' ||
+    val === '3_months_notice' ||
+    val === 'three_months_notice'
+  ) {
+    return 'three_months';
+  }
+  if (
+    val === 'not_looking' ||
+    val === 'not_actively_looking' ||
+    val === 'exploring_opportunities'
+  ) {
+    return 'not_looking';
+  }
+  return null;
+}
+
 function isSafeCvStoragePath(path: string | null | undefined): path is string {
   if (!path || path.includes('..')) return false;
   return SAFE_CV_PATH_RE.test(path.trim());
@@ -384,7 +427,7 @@ Deno.serve(async (req: Request) => {
       skills: skillsArray,
       years_experience: Number.isFinite(payload.yearsExperience) ? payload.yearsExperience : null,
       salary_expectation_ugx: Number.isFinite(payload.salaryExpectation) ? payload.salaryExpectation : null,
-      availability: payload.availability && payload.availability !== '' ? payload.availability : null,
+      availability: normalizeAvailability(payload.availability),
       source: 'Website (candidate)',
       owner_id: null,
     };
@@ -701,6 +744,7 @@ Deno.serve(async (req: Request) => {
     return json({ ok: true }, 200, origin);
   } catch (_e) {
     // The submission row remains as evidence; the candidate did not complete.
+    console.error('public-candidates error:', _e);
     return json({ ok: false, error: 'Could not process the submission.' }, 500, origin);
   }
 });
