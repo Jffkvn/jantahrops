@@ -26,6 +26,11 @@ import {
 } from '../_shared/candidate-alert.ts';
 import { applicationConfirmation, isDeliverableEmail, talentPoolConfirmation } from '../_shared/confirmations.ts';
 import { contactDifferences, differenceNote, type ExistingContact, gapFill } from '../_shared/contact-match.ts';
+import {
+  dismissUnlinkedSubmissions,
+  reportSubmissionFailureOnce,
+  requireStaffOrServiceAuth,
+} from '../_shared/failure-notify.ts';
 import { runAfterResponse, sendNotification } from '../_shared/mailer.ts';
 import { opsLink } from '../_shared/ops-url.ts';
 import { sendConfirmation, sendResendEmail, type ResendAttachment } from '../_shared/resend.ts';
@@ -54,9 +59,12 @@ const DEFAULT_TRUSTED_ORIGINS = [
   'https://jantahr.com',
   'https://www.jantahr.com',
   'https://jantahr.netlify.app',
+  'https://ops.jantahr.com',
+  'https://jantahr-ops.pages.dev',
   'http://localhost:5173',
   'http://localhost:5174',
   'http://localhost:5175',
+  'http://localhost:5180',
 ];
 
 const RAW_ALLOWED = Deno.env.get('PUBLIC_CANDIDATES_ALLOWED_ORIGIN') ?? '*';
@@ -78,7 +86,7 @@ function corsHeaders(origin: string | null): HeadersInit {
   return {
     'Access-Control-Allow-Origin': allow,
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'content-type',
+    'Access-Control-Allow-Headers': 'content-type, authorization, apikey, x-client-info',
     'Access-Control-Max-Age': '86400',
     Vary: 'Origin',
   };
@@ -236,6 +244,8 @@ async function prepareForwardDocument(
 
 interface RegistrationPayload {
   action?: string;
+  submissionId?: string;
+  submissionIds?: string[];
   fullName?: string;
   email?: string;
   phone?: string;
@@ -250,6 +260,375 @@ interface RegistrationPayload {
   notes?: string;
   honeypot?: string;
   submittedAt?: string;
+}
+
+async function processCandidatePayload(
+  supabase: SupabaseClient,
+  payload: RegistrationPayload,
+  submissionId: string,
+  submittedAt: string,
+  options: { appliedAt?: string; isRecovery?: boolean } = {},
+): Promise<{
+  contactId: string;
+  candidateId: string;
+  applicationId: string | null;
+  background: Promise<unknown>[];
+}> {
+  const fullName = (payload.fullName ?? '').trim();
+  const email = (payload.email ?? '').trim().toLowerCase() || null;
+  const phone = payload.phone ? normalizeUgandanPhone(payload.phone) : null;
+
+  // Contact: find-or-create by email, then phone; add the 'candidate' role.
+  const CONTACT_FIELDS = 'id, full_name, phone_e164, organisation_id';
+  let knownContact: ExistingContact | null = null;
+  if (email) {
+    const { data } = await supabase.from('contacts').select(CONTACT_FIELDS).ilike('email', email).maybeSingle();
+    knownContact = data;
+  }
+  if (!knownContact && phone) {
+    const { data } = await supabase.from('contacts').select(CONTACT_FIELDS).eq('phone_e164', phone).maybeSingle();
+    knownContact = data;
+  }
+  let contactId: string | null = knownContact?.id ?? null;
+
+  // A known person: fill gaps only, and record (never apply) any differences.
+  let differences: string[] = [];
+  if (knownContact) {
+    const submitted = {
+      fullName,
+      phone,
+      rawPhone: payload.phone ?? '',
+      organisationId: null,
+    };
+    const fill = gapFill(knownContact, submitted);
+    if (Object.keys(fill).length > 0) {
+      await supabase.from('contacts').update(fill).eq('id', knownContact.id);
+    }
+    differences = contactDifferences(knownContact, submitted);
+  }
+  const mismatchNote = knownContact ? differenceNote(knownContact, differences) : null;
+  if (!contactId) {
+    const { data, error } = await supabase
+      .from('contacts')
+      .insert({ full_name: fullName, email, phone_e164: phone, source: 'Website (candidate)' })
+      .select('id')
+      .single();
+    if (error) throw error;
+    contactId = String(data.id);
+  }
+  if (!contactId) throw new Error('Could not resolve contact ID.');
+  const { error: roleErr } = await supabase.from('contact_roles').upsert({ contact_id: contactId, role: 'candidate' });
+  if (roleErr) throw roleErr;
+
+  // Candidate profile: find-or-create (unique on contact_id). On an existing
+  // candidate, UPDATE the profile fields and replace cv_file_id — never
+  // duplicate the person or the profile.
+  const skillsArray = Array.isArray(payload.skills)
+    ? payload.skills
+    : (payload.skills ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+
+  const existing = await supabase
+    .from('candidates')
+    .select('id, cv_file_id')
+    .eq('contact_id', contactId)
+    .maybeSingle();
+
+  const profileFields = {
+    headline: (payload.headline ?? '').trim() || null,
+    skills: skillsArray,
+    years_experience: Number.isFinite(payload.yearsExperience) ? payload.yearsExperience : null,
+    salary_expectation_ugx: Number.isFinite(payload.salaryExpectation) ? payload.salaryExpectation : null,
+    availability: normalizeAvailability(payload.availability),
+    source: 'Website (candidate)',
+    owner_id: null,
+  };
+
+  let candidateId: string;
+  let oldCvFileId: string | null = null;
+
+  if (existing?.data) {
+    oldCvFileId = existing.data.cv_file_id;
+    candidateId = existing.data.id;
+    const patch = Object.fromEntries(
+      Object.entries(profileFields).filter(([key, value]) => {
+        if (key === 'source' || key === 'owner_id') return false;
+        if (value === null) return false;
+        if (Array.isArray(value) && value.length === 0) return false;
+        return true;
+      }),
+    );
+    if (Object.keys(patch).length > 0) {
+      const { error: updErr } = await supabase.from('candidates').update(patch).eq('id', candidateId);
+      if (updErr) throw updErr;
+    }
+  } else {
+    const { data, error } = await supabase
+      .from('candidates')
+      .insert({ contact_id: contactId, ...profileFields })
+      .select('id')
+      .single();
+    if (error) throw error;
+    candidateId = data.id;
+  }
+
+  // Record the CV file (if one was uploaded) and point candidates.cv_file_id at it.
+  let freshlyUploadedCvPath: string | null = null;
+  if (payload.cvPath && isSafeCvStoragePath(payload.cvPath)) {
+    const cleanCvPath = payload.cvPath.trim();
+    const { data: fileMeta, error: fileError } = await supabase
+      .from('candidate_files')
+      .select('id, path')
+      .eq('path', cleanCvPath)
+      .maybeSingle();
+
+    if (fileError) throw fileError;
+
+    if (fileMeta) {
+      await supabase.from('candidates').update({ cv_file_id: fileMeta.id }).eq('id', candidateId);
+    } else {
+      freshlyUploadedCvPath = cleanCvPath;
+      const { data: createdFile, error: createFileErr } = await supabase
+        .from('candidate_files')
+        .insert({
+          bucket: BUCKET,
+          path: cleanCvPath,
+          filename: cleanCvPath.split('/').pop() ?? cleanCvPath,
+          mime: mimeForPath(cleanCvPath),
+          size_bytes: 0,
+        })
+        .select('id')
+        .single();
+      if (!createFileErr && createdFile) {
+        await supabase.from('candidates').update({ cv_file_id: createdFile.id }).eq('id', candidateId);
+      }
+    }
+  }
+
+  // If the CV was replaced, clean up the old file (best-effort).
+  if (oldCvFileId && freshlyUploadedCvPath) {
+    const { data: oldFile } = await supabase
+      .from('candidate_files')
+      .select('path')
+      .eq('id', oldCvFileId)
+      .maybeSingle();
+    if (oldFile && oldFile.path !== freshlyUploadedCvPath) {
+      await supabase.storage.from(BUCKET).remove([oldFile.path]);
+      await supabase.from('candidate_files').delete().eq('id', oldCvFileId);
+    }
+  }
+
+  // Application: only if the vacancy slug matches an open, public vacancy.
+  const vacancySlug = (payload.vacancySlug ?? '').trim();
+  const isTalentPool = !vacancySlug || vacancySlug === TALENT_POOL_SLUG;
+  let applicationId: string | null = null;
+  let vacancy: {
+    id: string;
+    title: string;
+    screening_questions: unknown;
+    forwarding_emails?: unknown;
+  } | null = null;
+  if (!isTalentPool) {
+    const { data } = await supabase
+      .from('vacancies')
+      .select('id, title, screening_questions, forwarding_emails')
+      .eq('slug', vacancySlug)
+      .eq('is_public', true)
+      .eq('status', 'open')
+      .maybeSingle();
+    vacancy = data;
+
+    if (vacancy) {
+      const { data: application, error: appError } = await supabase
+        .from('applications')
+        .insert({
+          vacancy_id: vacancy.id,
+          candidate_id: candidateId,
+          source: 'website',
+          screening_answers: payload.screeningAnswers ?? {},
+          notes: payload.notes ?? null,
+          ...(options.appliedAt ? { applied_at: options.appliedAt } : {}),
+        })
+        .select('id')
+        .single();
+      if (!appError && application) applicationId = application.id;
+    }
+  }
+
+  if (!vacancy) {
+    await supabase
+      .from('candidates')
+      .update({ reviewed_at: null, reviewed_by: null })
+      .eq('id', candidateId);
+  }
+
+  const notes = (payload.notes ?? '').trim();
+  let activityBody = applicationId
+    ? `Registered on the website for ${vacancy?.title ?? vacancySlug}. ${options.isRecovery ? 'Application recovered from Today.' : 'Application created.'}`
+    : `Registered on the website. Added to the talent pool${options.isRecovery ? ' (recovered from Today)' : ''}.`;
+  if (!applicationId && notes) activityBody += `\n\n${notes}`;
+  if (mismatchNote) activityBody += `\n\n${mismatchNote}`;
+  await supabase.from('activities').insert({
+    subject_type: 'candidate',
+    subject_id: candidateId,
+    type: 'system',
+    body: activityBody,
+    meta: { source: options.isRecovery ? 'public-candidates-recovery' : 'public-candidates', hasCv: Boolean(payload.cvPath) },
+  });
+
+  await supabase.from('web_submissions').update({ contact_id: contactId }).eq('id', submissionId);
+
+  const background: Promise<unknown>[] = [];
+  const questions = Array.isArray(vacancy?.screening_questions)
+    ? (vacancy.screening_questions as ScreeningQuestion[])
+    : [];
+
+  const repeatApplication = Boolean(vacancy) && !applicationId;
+  if (!repeatApplication && !options.isRecovery) {
+    const alert = buildCandidateAlert({
+      fullName,
+      email,
+      phone,
+      headline: profileFields.headline,
+      yearsExperience: profileFields.years_experience,
+      salaryExpectationUgx: profileFields.salary_expectation_ugx,
+      availability: profileFields.availability,
+      skills: skillsArray,
+      hasCv: Boolean(payload.cvPath),
+      outcome: applicationId ? 'application' : isTalentPool ? 'talent_pool' : 'vacancy_unavailable',
+      vacancyTitle: vacancy?.title ?? null,
+      vacancySlug: isTalentPool ? null : vacancySlug,
+      screeningQuestions: questions,
+      screeningAnswers: payload.screeningAnswers ?? null,
+      notes,
+      submittedAt,
+      existingContact:
+        knownContact && differences.length > 0 ? { name: knownContact.full_name, differences } : null,
+      opsLink: applicationId
+        ? opsLink(`/recruitment/${vacancy!.id}?application=${applicationId}`)
+        : opsLink(`/talent?candidate=${candidateId}`),
+    });
+    background.push(sendNotification({ ...alert, replyTo: email }, 'candidate alert'));
+  }
+
+  const forwardRecipients =
+    !repeatApplication && applicationId && Array.isArray(vacancy?.forwarding_emails)
+      ? vacancy.forwarding_emails
+          .map((addr) => (typeof addr === 'string' ? addr.trim().toLowerCase() : ''))
+          .filter((addr): addr is string => isDeliverableEmail(addr))
+          .slice(0, 5)
+      : [];
+
+  if (isDeliverableEmail(email) || forwardRecipients.length > 0) {
+    background.push(
+      (async () => {
+        let sentConfirm = false;
+        if (isDeliverableEmail(email)) {
+          const hasCv = Boolean(payload.cvPath);
+          const confirmation = vacancy
+            ? applicationConfirmation({ fullName, vacancyTitle: vacancy.title, hasCv })
+            : talentPoolConfirmation({ fullName, hasCv });
+          sentConfirm = await sendConfirmation(
+            email,
+            confirmation,
+            vacancy ? 'application_confirmation' : 'talent_pool_confirmation',
+            `candidate-confirm-${submissionId}`,
+          );
+        }
+
+        if (forwardRecipients.length > 0 && vacancy && applicationId) {
+          if (sentConfirm) {
+            await new Promise((r) => setTimeout(r, 600));
+          }
+          const parsedNotes = parseApplicationNotes(notes);
+          let remainingBudget = MAX_TOTAL_ATTACHMENT_BYTES;
+          const attachments: ResendAttachment[] = [];
+
+          const cvPrep = await prepareForwardDocument(
+            supabase,
+            freshlyUploadedCvPath,
+            buildAttachmentFilename(fullName, 'CV', freshlyUploadedCvPath ?? 'cv.pdf'),
+            remainingBudget,
+          );
+          if (cvPrep.attachment) {
+            attachments.push(cvPrep.attachment);
+            remainingBudget -= cvPrep.bytesUsed;
+          }
+
+          let coverPath: string | null = null;
+          if (
+            parsedNotes.coverLetterPath &&
+            SAFE_COVER_LETTER_PATH_RE.test(parsedNotes.coverLetterPath)
+          ) {
+            const { data: existingCoverFile } = await supabase
+              .from('candidate_files')
+              .select('id')
+              .eq('path', parsedNotes.coverLetterPath)
+              .maybeSingle();
+            if (!existingCoverFile) coverPath = parsedNotes.coverLetterPath;
+          }
+
+          const coverPrep = await prepareForwardDocument(
+            supabase,
+            coverPath,
+            buildAttachmentFilename(fullName, 'Cover_Letter', coverPath ?? 'cover.pdf'),
+            remainingBudget,
+          );
+          if (coverPrep.attachment) {
+            attachments.push(coverPrep.attachment);
+          }
+
+          const clientEmail = buildClientForwardEmail({
+            fullName,
+            email,
+            phone,
+            headline: profileFields.headline,
+            yearsExperience: profileFields.years_experience,
+            salaryExpectationUgx: profileFields.salary_expectation_ugx,
+            availability: profileFields.availability,
+            skills: skillsArray,
+            hasCv: Boolean(payload.cvPath),
+            cvAttached: Boolean(cvPrep.attachment),
+            cvDownloadUrl: cvPrep.signedUrl,
+            coverLetterAttached: Boolean(coverPrep.attachment),
+            coverLetterDownloadUrl: coverPrep.signedUrl,
+            vacancyTitle: vacancy.title,
+            screeningQuestions: questions,
+            screeningAnswers: payload.screeningAnswers ?? null,
+            notes,
+            submittedAt,
+          });
+
+          await sendResendEmail(
+            forwardRecipients,
+            clientEmail,
+            'client_application_forward',
+            `client-forward-${submissionId}`,
+            { attachments },
+          );
+        }
+      })(),
+    );
+  }
+
+  const supabaseUrl = Deno.env.get('SUPABASE_URL');
+  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  if (supabaseUrl && serviceKey && (applicationId || payload.cvPath)) {
+    const evalBody = applicationId
+      ? { action: 'evaluate_application', applicationId, forceReparseCv: Boolean(payload.cvPath) }
+      : { action: 'parse_candidate_cv', candidateId, forceReparseCv: true };
+    background.push(
+      fetch(`${supabaseUrl}/functions/v1/evaluate-candidate`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${serviceKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(evalBody),
+      }).catch((err) => console.warn('evaluate-candidate background trigger failed:', err)),
+    );
+  }
+
+  return { contactId, candidateId, applicationId, background };
 }
 
 Deno.serve(async (req: Request) => {
@@ -320,16 +699,11 @@ Deno.serve(async (req: Request) => {
   }
 
   if (payload.action === 'send_recovered_confirmation') {
-    const authHeader = req.headers.get('authorization') ?? '';
-    const bearer = authHeader.replace(/^Bearer\s+/i, '').trim();
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    if (!bearer) return json({ ok: false, error: 'Unauthorized.' }, 401, origin);
-    if (bearer !== serviceRoleKey) {
-      const probe = createClient(supabaseUrl, bearer, { auth: { persistSession: false } });
-      const { error: adminErr } = await probe.auth.admin.listUsers({ page: 1, perPage: 1 });
-      if (adminErr) return json({ ok: false, error: 'Unauthorized.' }, 401, origin);
-    }
+    const auth = await requireStaffOrServiceAuth(req, supabaseUrl, serviceRoleKey, supabase);
+    if (!auth.ok) return json({ ok: false, error: auth.error }, auth.status, origin);
+
     const recipEmail = (payload.email ?? '').trim().toLowerCase();
     const recipName = (payload.fullName ?? '').trim() || 'Applicant';
     const vacTitle = (payload.headline ?? '').trim();
@@ -348,6 +722,93 @@ Deno.serve(async (req: Request) => {
       `candidate-confirm-${idempKey}`,
     );
     return json({ ok: sent }, sent ? 200 : 502, origin);
+  }
+
+  if (payload.action === 'recover_submission') {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const auth = await requireStaffOrServiceAuth(req, supabaseUrl, serviceRoleKey, supabase);
+    if (!auth.ok) return json({ ok: false, error: auth.error }, auth.status, origin);
+
+    const targetId = (payload.submissionId ?? '').trim();
+    if (!targetId) return json({ ok: false, error: 'submissionId is required.' }, 400, origin);
+
+    const { data: subRow, error: subErr } = await supabase
+      .from('web_submissions')
+      .select('id, created_at, payload, contact_id')
+      .eq('id', targetId)
+      .eq('lead_type', 'candidate')
+      .is('contact_id', null)
+      .maybeSingle();
+
+    if (subErr || !subRow) {
+      return json({ ok: false, error: 'Unlinked candidate submission not found.' }, 404, origin);
+    }
+
+    const stored = (subRow.payload ?? {}) as RegistrationPayload;
+    const submittedAt = (stored.submittedAt ?? '').trim() || subRow.created_at;
+    try {
+      const result = await processCandidatePayload(supabase, stored, subRow.id, submittedAt, {
+        appliedAt: subRow.created_at,
+        isRecovery: true,
+      });
+
+      const targetEmail = (stored.email ?? '').trim().toLowerCase();
+      const targetNormPhone = stored.phone ? normalizeUgandanPhone(stored.phone) : null;
+      const targetRawPhone = (stored.phone ?? '').trim();
+      const { data: otherUnlinked } = await supabase
+        .from('web_submissions')
+        .select('id, payload')
+        .eq('lead_type', 'candidate')
+        .is('contact_id', null);
+
+      const retryIds = (otherUnlinked ?? [])
+        .filter((row) => {
+          const p = (row.payload ?? {}) as Record<string, unknown>;
+          const rowEmail = typeof p.email === 'string' ? p.email.trim().toLowerCase() : '';
+          const rowPhone = typeof p.phone === 'string' ? p.phone.trim() : '';
+          const rowNorm = rowPhone ? normalizeUgandanPhone(rowPhone) : null;
+          if (targetEmail && rowEmail && targetEmail === rowEmail) return true;
+          if (targetNormPhone && rowNorm && targetNormPhone === rowNorm) return true;
+          if (targetRawPhone && rowPhone && targetRawPhone === rowPhone) return true;
+          return false;
+        })
+        .map((row) => row.id);
+
+      if (retryIds.length > 0) {
+        await supabase.from('web_submissions').update({ contact_id: result.contactId }).in('id', retryIds);
+      }
+
+      await runAfterResponse(Promise.all(result.background));
+      return json(
+        {
+          ok: true,
+          contactId: result.contactId,
+          candidateId: result.candidateId,
+          applicationId: result.applicationId,
+        },
+        200,
+        origin,
+      );
+    } catch (err) {
+      console.error('recover_submission failed:', err);
+      return json({ ok: false, error: 'Could not recover this submission.' }, 500, origin);
+    }
+  }
+
+  if (payload.action === 'dismiss_failed_submission') {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const auth = await requireStaffOrServiceAuth(req, supabaseUrl, serviceRoleKey, supabase);
+    if (!auth.ok) return json({ ok: false, error: auth.error }, auth.status, origin);
+
+    const ids = Array.isArray(payload.submissionIds)
+      ? payload.submissionIds.map(String)
+      : payload.submissionId
+        ? [String(payload.submissionId)]
+        : [];
+    const deleted = await dismissUnlinkedSubmissions(supabase, ids);
+    return json({ ok: true, deleted }, 200, origin);
   }
 
   // Step 2 — registration proper. Honeypot first, same as public-leads.
@@ -400,382 +861,27 @@ Deno.serve(async (req: Request) => {
   const submissionId = claim.data.id;
 
   try {
-    // Contact: find-or-create by email, then phone; add the 'candidate' role.
-    const CONTACT_FIELDS = 'id, full_name, phone_e164, organisation_id';
-    let knownContact: ExistingContact | null = null;
-    if (email) {
-      const { data } = await supabase.from('contacts').select(CONTACT_FIELDS).ilike('email', email).maybeSingle();
-      knownContact = data;
-    }
-    if (!knownContact && phone) {
-      const { data } = await supabase.from('contacts').select(CONTACT_FIELDS).eq('phone_e164', phone).maybeSingle();
-      knownContact = data;
-    }
-    let contactId: string | null = knownContact?.id ?? null;
-
-    // A known person: fill gaps only, and record (never apply) any differences.
-    let differences: string[] = [];
-    if (knownContact) {
-      const submitted = {
-        fullName,
-        phone,
-        rawPhone: payload.phone ?? '',
-        organisationId: null,
-      };
-      const fill = gapFill(knownContact, submitted);
-      if (Object.keys(fill).length > 0) {
-        await supabase.from('contacts').update(fill).eq('id', knownContact.id);
-      }
-      differences = contactDifferences(knownContact, submitted);
-    }
-    const mismatchNote = knownContact ? differenceNote(knownContact, differences) : null;
-    if (!contactId) {
-      const { data, error } = await supabase
-        .from('contacts')
-        .insert({ full_name: fullName, email, phone_e164: phone, source: 'Website (candidate)' })
-        .select('id')
-        .single();
-      if (error) throw error;
-      contactId = data.id;
-    }
-    await supabase.from('contact_roles').upsert({ contact_id: contactId, role: 'candidate' });
-
-    // Candidate profile: find-or-create (unique on contact_id). On an existing
-    // candidate, UPDATE the profile fields and replace cv_file_id — never
-    // duplicate the person or the profile.
-    const skillsArray = Array.isArray(payload.skills)
-      ? payload.skills
-      : (payload.skills ?? '').split(',').map((s) => s.trim()).filter(Boolean);
-
-    const existing = await supabase
-      .from('candidates')
-      .select('id, cv_file_id')
-      .eq('contact_id', contactId)
-      .maybeSingle();
-
-    const profileFields = {
-      headline: (payload.headline ?? '').trim() || null,
-      skills: skillsArray,
-      years_experience: Number.isFinite(payload.yearsExperience) ? payload.yearsExperience : null,
-      salary_expectation_ugx: Number.isFinite(payload.salaryExpectation) ? payload.salaryExpectation : null,
-      availability: normalizeAvailability(payload.availability),
-      source: 'Website (candidate)',
-      owner_id: null,
-    };
-
-    let candidateId: string;
-    let oldCvFileId: string | null = null;
-
-    if (existing?.data) {
-      oldCvFileId = existing.data.cv_file_id;
-      candidateId = existing.data.id;
-      // A re-registration is a PARTIAL update: the form may omit fields the
-      // candidate gave us last time. Only write keys the payload actually
-      // supplied — otherwise a shorter second submission silently wipes good
-      // data (availability, salary expectation, skills) we already held.
-      const patch = Object.fromEntries(
-        Object.entries(profileFields).filter(([key, value]) => {
-          if (key === 'source' || key === 'owner_id') return false; // never overwrite on update
-          if (value === null) return false;
-          if (Array.isArray(value) && value.length === 0) return false;
-          return true;
-        }),
-      );
-      if (Object.keys(patch).length > 0) {
-        await supabase.from('candidates').update(patch).eq('id', candidateId);
-      }
-    } else {
-      const { data, error } = await supabase
-        .from('candidates')
-        .insert({ contact_id: contactId, ...profileFields })
-        .select('id')
-        .single();
-      if (error) throw error;
-      candidateId = data.id;
-    }
-
-    // Record the CV file (if one was uploaded) and point candidates.cv_file_id at it.
-    let freshlyUploadedCvPath: string | null = null;
-    if (payload.cvPath && isSafeCvStoragePath(payload.cvPath)) {
-      const cleanCvPath = payload.cvPath.trim();
-      const { data: fileMeta, error: fileError } = await supabase
-        .from('candidate_files')
-        .select('id, path')
-        .eq('path', cleanCvPath)
-        .maybeSingle();
-
-      if (fileError) throw fileError;
-
-      if (fileMeta) {
-        await supabase.from('candidates').update({ cv_file_id: fileMeta.id }).eq('id', candidateId);
-      } else {
-        freshlyUploadedCvPath = cleanCvPath;
-        // The upload URL was issued but the file never uploaded (or the metadata
-        // row is missing). Store the reference anyway as a best-effort so the
-        // registration still completes.
-        const { data: createdFile, error: createFileErr } = await supabase
-          .from('candidate_files')
-          .insert({
-            bucket: BUCKET,
-            path: cleanCvPath,
-            filename: cleanCvPath.split('/').pop() ?? cleanCvPath,
-            mime: mimeForPath(cleanCvPath),
-            size_bytes: 0,
-          })
-          .select('id')
-          .single();
-        if (!createFileErr && createdFile) {
-          await supabase.from('candidates').update({ cv_file_id: createdFile.id }).eq('id', candidateId);
-        }
-      }
-    }
-
-    // If the CV was replaced, clean up the old file (best-effort).
-    if (oldCvFileId && freshlyUploadedCvPath) {
-      const { data: oldFile } = await supabase
-        .from('candidate_files')
-        .select('path')
-        .eq('id', oldCvFileId)
-        .maybeSingle();
-      if (oldFile && oldFile.path !== freshlyUploadedCvPath) {
-        await supabase.storage.from(BUCKET).remove([oldFile.path]);
-        await supabase.from('candidate_files').delete().eq('id', oldCvFileId);
-      }
-    }
-
-    // Application: only if the vacancy slug matches an open, public vacancy.
-    const vacancySlug = (payload.vacancySlug ?? '').trim();
-    const isTalentPool = !vacancySlug || vacancySlug === TALENT_POOL_SLUG;
-    let applicationId: string | null = null;
-    let vacancy: {
-      id: string;
-      title: string;
-      screening_questions: unknown;
-      forwarding_emails?: unknown;
-    } | null = null;
-    if (!isTalentPool) {
-      const { data } = await supabase
-        .from('vacancies')
-        .select('id, title, screening_questions, forwarding_emails')
-        .eq('slug', vacancySlug)
-        .eq('is_public', true)
-        .eq('status', 'open')
-        .maybeSingle();
-      vacancy = data;
-
-      if (vacancy) {
-        const { data: application, error: appError } = await supabase
-          .from('applications')
-          .insert({
-            vacancy_id: vacancy.id,
-            candidate_id: candidateId,
-            source: 'website',
-            screening_answers: payload.screeningAnswers ?? {},
-            notes: payload.notes ?? null,
-          })
-          .select('id')
-          .single();
-        // Duplicate application (same person, same vacancy) is fine — the unique
-        // constraint turns it into a no-op, not an error.
-        if (!appError && application) applicationId = application.id;
-      }
-    }
-
-    // A talent-pool registration (no vacancy) puts the person back in the
-    // "New from the website" queue, even if they registered before: they may
-    // have sent a new CV. A new application is queued as the application.
-    if (!vacancy) {
-      await supabase
-        .from('candidates')
-        .update({ reviewed_at: null, reviewed_by: null })
-        .eq('id', candidateId);
-    }
-
-    // Timeline entry on the candidate. Notes only live on an application, so
-    // without one (talent-pool form, closed vacancy) they go on the timeline —
-    // otherwise the cover note, discipline, country and LinkedIn are lost.
-    const notes = (payload.notes ?? '').trim();
-    let activityBody = applicationId
-      ? `Registered on the website for ${vacancy?.title ?? vacancySlug}. Application created.`
-      : 'Registered on the website. Added to the talent pool.';
-    if (!applicationId && notes) activityBody += `\n\n${notes}`;
-    if (mismatchNote) activityBody += `\n\n${mismatchNote}`;
-    await supabase.from('activities').insert({
-      subject_type: 'candidate',
-      subject_id: candidateId,
-      type: 'system',
-      body: activityBody,
-      meta: { source: 'public-candidates', hasCv: Boolean(payload.cvPath) },
-    });
-
-    // Link the submission to what it produced (audit trail).
-    await supabase.from('web_submissions').update({ contact_id: contactId }).eq('id', submissionId);
-
-    // After the response is sent: alert the team (Apps Script mailer) and
-    // confirm receipt to the candidate (Resend). Neither can fail the submission.
-    const background: Promise<unknown>[] = [];
-
-    const questions = Array.isArray(vacancy?.screening_questions)
-      ? (vacancy.screening_questions as ScreeningQuestion[])
-      : [];
-
-    // Team alert. Skip a repeat application to the same vacancy (the unique
-    // constraint made it a no-op, so there is nothing new to review).
-    const repeatApplication = Boolean(vacancy) && !applicationId;
-    if (!repeatApplication) {
-      const alert = buildCandidateAlert({
-        fullName,
-        email,
-        phone,
-        headline: profileFields.headline,
-        yearsExperience: profileFields.years_experience,
-        salaryExpectationUgx: profileFields.salary_expectation_ugx,
-        availability: profileFields.availability,
-        skills: skillsArray,
-        hasCv: Boolean(payload.cvPath),
-        outcome: applicationId ? 'application' : isTalentPool ? 'talent_pool' : 'vacancy_unavailable',
-        vacancyTitle: vacancy?.title ?? null,
-        vacancySlug: isTalentPool ? null : vacancySlug,
-        screeningQuestions: questions,
-        screeningAnswers: payload.screeningAnswers ?? null,
-        notes,
-        submittedAt,
-        existingContact:
-          knownContact && differences.length > 0 ? { name: knownContact.full_name, differences } : null,
-        opsLink: applicationId
-          ? opsLink(`/recruitment/${vacancy!.id}?application=${applicationId}`)
-          : opsLink(`/talent?candidate=${candidateId}`),
-      });
-      background.push(sendNotification({ ...alert, replyTo: email }, 'candidate alert'));
-    }
-
-    // Resend tasks (candidate confirmation + optional external client forwarding)
-    // run sequentially so they never trip Resend's 2 req/sec burst rate limit.
-    const forwardRecipients =
-      !repeatApplication && applicationId && Array.isArray(vacancy?.forwarding_emails)
-        ? vacancy.forwarding_emails
-            .map((addr) => (typeof addr === 'string' ? addr.trim().toLowerCase() : ''))
-            .filter((addr): addr is string => isDeliverableEmail(addr))
-            .slice(0, 5)
-        : [];
-
-    if (isDeliverableEmail(email) || forwardRecipients.length > 0) {
-      background.push(
-        (async () => {
-          let sentConfirm = false;
-          if (isDeliverableEmail(email)) {
-            const hasCv = Boolean(payload.cvPath);
-            const confirmation = vacancy
-              ? applicationConfirmation({ fullName, vacancyTitle: vacancy.title, hasCv })
-              : talentPoolConfirmation({ fullName, hasCv });
-            sentConfirm = await sendConfirmation(
-              email,
-              confirmation,
-              vacancy ? 'application_confirmation' : 'talent_pool_confirmation',
-              `candidate-confirm-${submissionId}`,
-            );
-          }
-
-          if (forwardRecipients.length > 0 && vacancy && applicationId) {
-            if (sentConfirm) {
-              await new Promise((r) => setTimeout(r, 600));
-            }
-            const parsedNotes = parseApplicationNotes(notes);
-            let remainingBudget = MAX_TOTAL_ATTACHMENT_BYTES;
-            const attachments: ResendAttachment[] = [];
-
-            const cvPrep = await prepareForwardDocument(
-              supabase,
-              freshlyUploadedCvPath,
-              buildAttachmentFilename(fullName, 'CV', freshlyUploadedCvPath ?? 'cv.pdf'),
-              remainingBudget,
-            );
-            if (cvPrep.attachment) {
-              attachments.push(cvPrep.attachment);
-              remainingBudget -= cvPrep.bytesUsed;
-            }
-
-            let coverPath: string | null = null;
-            if (
-              parsedNotes.coverLetterPath &&
-              SAFE_COVER_LETTER_PATH_RE.test(parsedNotes.coverLetterPath)
-            ) {
-              const { data: existingCoverFile } = await supabase
-                .from('candidate_files')
-                .select('id')
-                .eq('path', parsedNotes.coverLetterPath)
-                .maybeSingle();
-              if (!existingCoverFile) coverPath = parsedNotes.coverLetterPath;
-            }
-
-            const coverPrep = await prepareForwardDocument(
-              supabase,
-              coverPath,
-              buildAttachmentFilename(fullName, 'Cover_Letter', coverPath ?? 'cover.pdf'),
-              remainingBudget,
-            );
-            if (coverPrep.attachment) {
-              attachments.push(coverPrep.attachment);
-            }
-
-            const clientEmail = buildClientForwardEmail({
-              fullName,
-              email,
-              phone,
-              headline: profileFields.headline,
-              yearsExperience: profileFields.years_experience,
-              salaryExpectationUgx: profileFields.salary_expectation_ugx,
-              availability: profileFields.availability,
-              skills: skillsArray,
-              hasCv: Boolean(payload.cvPath),
-              cvAttached: Boolean(cvPrep.attachment),
-              cvDownloadUrl: cvPrep.signedUrl,
-              coverLetterAttached: Boolean(coverPrep.attachment),
-              coverLetterDownloadUrl: coverPrep.signedUrl,
-              vacancyTitle: vacancy.title,
-              screeningQuestions: questions,
-              screeningAnswers: payload.screeningAnswers ?? null,
-              notes,
-              submittedAt,
-            });
-
-            await sendResendEmail(
-              forwardRecipients,
-              clientEmail,
-              'client_application_forward',
-              `client-forward-${submissionId}`,
-              { attachments },
-            );
-          }
-        })(),
-      );
-    }
-
-    // Background AI CV parsing & role-match evaluation (never blocks or fails intake).
-    const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-    if (supabaseUrl && serviceKey && (applicationId || payload.cvPath)) {
-      const evalBody = applicationId
-        ? { action: 'evaluate_application', applicationId, forceReparseCv: Boolean(payload.cvPath) }
-        : { action: 'parse_candidate_cv', candidateId, forceReparseCv: true };
-      background.push(
-        fetch(`${supabaseUrl}/functions/v1/evaluate-candidate`, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${serviceKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(evalBody),
-        }).catch((err) => console.warn('evaluate-candidate background trigger failed:', err)),
-      );
-    }
-
-    await runAfterResponse(Promise.all(background));
-
+    const result = await processCandidatePayload(supabase, payload, submissionId, submittedAt);
+    await runAfterResponse(Promise.all(result.background));
     return json({ ok: true }, 200, origin);
-  } catch (_e) {
-    // The submission row remains as evidence; the candidate did not complete.
-    console.error('public-candidates error:', _e);
+  } catch (err) {
+    // The submission row remains as evidence; alert the team once per 15-min window.
+    console.error('public-candidates error:', err);
+    const slug = (payload.vacancySlug ?? '').trim();
+    const targetLabel =
+      !slug || slug === TALENT_POOL_SLUG ? 'Talent pool' : `Application · ${slug}`;
+    await reportSubmissionFailureOnce(supabase, {
+      endpoint: 'public-candidates',
+      submissionId,
+      fullName,
+      email,
+      rawPhone: payload.phone ?? null,
+      normalizedPhone: phone,
+      targetLabel,
+      cvPath: payload.cvPath ?? null,
+      err,
+      submittedAt,
+    });
     return json({ ok: false, error: 'Could not process the submission.' }, 500, origin);
   }
 });

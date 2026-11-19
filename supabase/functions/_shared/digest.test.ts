@@ -53,3 +53,24 @@ Deno.test('the digest links to Today when Ops is hosted', () => {
   assertStringIncludes(buildDigest(d, 'Jeff', 'https://ops.jantahr.com').text, 'Open Today in JantaHR Ops: https://ops.jantahr.com');
   assertStringIncludes(buildDigest(d, 'Jeff').text, 'Open JantaHR Ops → Today');
 });
+
+Deno.test('failed website submissions trigger a non-empty digest and appear first', () => {
+  const d: DigestData = {
+    ...empty,
+    failedSubmissions: [
+      {
+        name: 'Jane Namuli',
+        target: 'Application · hr-assistant',
+        attempts: 3,
+        createdAt: '2026-11-19T08:00:00.000Z',
+      },
+    ],
+    tasks: [{ title: 'Call NSSF', dueAt: '2026-10-09T06:00:00.000Z', assignee: null }],
+  };
+  assert(!isEmptyDigest(d));
+  const { subject, text } = buildDigest(d, 'Jeff', 'https://ops.jantahr.com');
+  assertEquals(subject, 'Your JantaHR day: 1 failed website submission, 1 task');
+  assertStringIncludes(text, 'Action needed: failed website submissions');
+  assertStringIncludes(text, 'Jane Namuli · Application · hr-assistant (3 attempts)');
+  assert(text.indexOf('Action needed: failed website submissions') < text.indexOf('Tasks due'));
+});

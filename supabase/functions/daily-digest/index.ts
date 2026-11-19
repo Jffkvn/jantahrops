@@ -66,7 +66,7 @@ Deno.serve(async (req: Request) => {
   );
   const day = kampalaDay();
 
-  const [followUps, tasks, leadsNew, appsNew, candsNew, invoices, people] = await Promise.all([
+  const [followUps, tasks, leadsNew, appsNew, candsNew, invoices, people, failedSubs] = await Promise.all([
     supabase
       .from('leads')
       .select('next_action_at, next_action_note, contact:contacts!leads_contact_id_fkey ( full_name ), owner:profiles!leads_owner_id_fkey ( full_name )')
@@ -104,13 +104,46 @@ Deno.serve(async (req: Request) => {
       .lt('due_date', day.date)
       .order('due_date', { ascending: true }),
     supabase.from('profiles').select('email, full_name').eq('is_active', true),
+    supabase
+      .from('web_submissions')
+      .select('id, lead_type, payload, created_at')
+      .is('contact_id', null)
+      .order('created_at', { ascending: false })
+      .limit(100),
   ]);
 
-  for (const r of [followUps, tasks, leadsNew, appsNew, candsNew, invoices, people]) {
+  for (const r of [followUps, tasks, leadsNew, appsNew, candsNew, invoices, people, failedSubs]) {
     if (r.error) {
       console.error('[digest] query failed', r.error);
       return json({ ok: false, error: 'Query failed.' }, 500);
     }
+  }
+
+  const failedGrouped = new Map<string, { name: string; target: string; attempts: number; createdAt: string }>();
+  for (const row of (failedSubs.data ?? []) as Row[]) {
+    const p = (row.payload ?? {}) as Record<string, unknown>;
+    const email = typeof p.email === 'string' ? p.email.trim().toLowerCase() : '';
+    if (email.endsWith('@example.test')) continue;
+    const phone = typeof p.phone === 'string' ? p.phone.trim() : '';
+    const leadType = String(row.lead_type ?? 'website');
+    const key = `${leadType}|${email || phone || String(row.id)}`;
+    const existing = failedGrouped.get(key);
+    if (existing) {
+      existing.attempts++;
+      continue;
+    }
+    const name = (typeof p.fullName === 'string' ? p.fullName.trim() : '') || 'Unknown visitor';
+    let target = 'Website enquiry';
+    if (leadType === 'candidate') {
+      const slug = typeof p.vacancySlug === 'string' ? p.vacancySlug.trim() : '';
+      target = !slug || slug === 'general-talent-pool' ? 'Talent pool' : `Application · ${slug}`;
+    } else if (leadType === 'ai_training') {
+      const unit = typeof p.trainingUnit === 'string' ? p.trainingUnit.trim() : '';
+      target = unit ? `AI training · ${unit}` : 'AI training';
+    } else if (typeof p.interest === 'string' && p.interest.trim()) {
+      target = `Website enquiry · ${p.interest.trim()}`;
+    }
+    failedGrouped.set(key, { name, target, attempts: 1, createdAt: String(row.created_at) });
   }
 
   const apps = (appsNew.data ?? []) as Row[];
@@ -120,6 +153,7 @@ Deno.serve(async (req: Request) => {
 
   const data: DigestData = {
     startOfToday: day.start,
+    failedSubmissions: Array.from(failedGrouped.values()),
     followUps: ((followUps.data ?? []) as Row[]).map((l) => ({
       name: l.contact?.full_name ?? 'Unknown contact',
       note: l.next_action_note,

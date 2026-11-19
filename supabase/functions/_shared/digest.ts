@@ -23,9 +23,17 @@ export interface DigestInvoice {
   dueDate: string; // yyyy-mm-dd
 }
 
+export interface DigestFailedSubmission {
+  name: string;
+  target: string;
+  attempts: number;
+  createdAt: string;
+}
+
 export interface DigestData {
   /** Start of today in Kampala, ISO. Anything due before it is overdue. */
   startOfToday: string;
+  failedSubmissions?: DigestFailedSubmission[];
   followUps: DigestFollowUp[];
   tasks: DigestTask[];
   newArrivals: { leads: number; applications: number; talentPool: number; names: string[] };
@@ -37,6 +45,7 @@ const MAX_ITEMS = 10;
 export function isEmptyDigest(d: DigestData): boolean {
   const a = d.newArrivals;
   return (
+    (d.failedSubmissions?.length ?? 0) === 0 &&
     d.followUps.length === 0 &&
     d.tasks.length === 0 &&
     a.leads + a.applications + a.talentPool === 0 &&
@@ -70,8 +79,32 @@ export function buildDigest(
 ): RenderedEmail {
   const blocks: Block[] = [];
   const counts: string[] = [];
+  const failed = d.failedSubmissions ?? [];
   const a = d.newArrivals;
   const arrivals = a.leads + a.applications + a.talentPool;
+
+  if (failed.length > 0) {
+    counts.push(plural(failed.length, 'failed website submission'));
+    blocks.push(
+      { kind: 'heading', text: 'Action needed: failed website submissions' },
+      {
+        kind: 'paragraph',
+        text: 'These website submissions were captured in the intake log but failed before reaching the pipeline. Open Today in JantaHR Ops to recover them with one click.',
+      },
+      {
+        kind: 'list',
+        items: capped(
+          failed
+            .slice(0, MAX_ITEMS)
+            .map(
+              (f) =>
+                `${f.name} · ${f.target}${f.attempts > 1 ? ` (${f.attempts} attempts)` : ''} · ${formatEat(f.createdAt)}`,
+            ),
+          failed.length,
+        ),
+      },
+    );
+  }
 
   if (arrivals > 0) {
     counts.push(`${arrivals} new from the website`);

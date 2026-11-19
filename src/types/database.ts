@@ -614,8 +614,20 @@ export type CandidateFileRow = {
   created_at: string;
 };
 
+export type WebSubmissionRow = {
+  id: string;
+  idempotency_key: string;
+  lead_type: string;
+  payload: unknown;
+  contact_id: string | null;
+  lead_id: string | null;
+  ip: string | null;
+  created_at: string;
+};
+
 // --- insert shapes ---------------------------------------------------------
 type Insertable<Row, Required extends keyof Row> = Pick<Row, Required> & Partial<Row>;
+type WebSubmissionInsert = Insertable<WebSubmissionRow, 'idempotency_key' | 'lead_type' | 'payload'>;
 
 type ProfileInsert = Insertable<ProfileRow, 'id' | 'email'>;
 type OrganisationInsert = Insertable<OrganisationRow, 'name'>;
@@ -816,6 +828,12 @@ export interface Database {
         Row: CandidateFileRow;
         Insert: CandidateFileInsert;
         Update: Partial<Omit<CandidateFileRow, 'id' | 'created_at'>>;
+        Relationships: [];
+      };
+      web_submissions: {
+        Row: WebSubmissionRow;
+        Insert: WebSubmissionInsert;
+        Update: Partial<Omit<WebSubmissionRow, 'id' | 'created_at'>>;
         Relationships: [];
       };
     };

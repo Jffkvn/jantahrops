@@ -14,6 +14,7 @@ import { SignalsSection } from '@/features/signals/signals-section';
 import { DayTasksSection } from '@/features/tasks/day-tasks-section';
 import { useTaskCounts } from '@/features/tasks/use-tasks';
 import { useDayView } from './use-today';
+import { FailedSubmissionsSection } from './failed-submissions-section';
 import { NewArrivalsSection } from './new-arrivals-section';
 import type { LeadWithRelations } from '@/features/leads/leads-api';
 
@@ -45,6 +46,9 @@ export function TodayPage() {
   return (
     <div>
       <PageHeader description={formatDate(new Date())} title={`Good day, ${firstName}`} />
+
+      {/* Failed website form POSTs needing one-click recovery. Hidden when none. */}
+      <FailedSubmissionsSection />
 
       {/* Website submissions nobody has looked at yet. Hidden when none. */}
       <NewArrivalsSection onOpenLead={setOpenLeadId} />
