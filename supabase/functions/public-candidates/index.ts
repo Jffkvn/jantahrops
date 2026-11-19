@@ -231,6 +231,7 @@ async function prepareForwardDocument(
         attachment = {
           filename: attachmentFilename,
           content: uint8ToBase64(buf),
+          contentType: mimeForPath(storagePath),
         };
         bytesUsed = buf.byteLength;
       }

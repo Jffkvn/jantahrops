@@ -14,6 +14,7 @@
 
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { buildDigest, type DigestData, isEmptyDigest } from '../_shared/digest.ts';
+import { sendNotification } from '../_shared/mailer.ts';
 import { OPS_URL } from '../_shared/ops-url.ts';
 import { sendConfirmation } from '../_shared/resend.ts';
 
@@ -203,7 +204,19 @@ Deno.serve(async (req: Request) => {
   let sent = 0;
   for (const r of recipients) {
     const email = buildDigest(data, r.firstName, OPS_URL);
-    const ok = await sendConfirmation(r.email, email, 'daily_digest', `digest-${day.date}-${r.email}`, { from: FROM });
+    const sentViaAppsScript = await sendNotification(
+      {
+        to: r.email,
+        subject: email.subject,
+        text: email.text,
+        html: email.html,
+        fromName: 'JantaHR Ops',
+      },
+      'daily digest',
+    );
+    const ok =
+      sentViaAppsScript ||
+      (await sendConfirmation(r.email, email, 'daily_digest', `digest-${day.date}-${r.email}`, { from: FROM }));
     if (ok) sent++;
   }
   console.log(`[digest] sent ${sent} of ${recipients.length}`);

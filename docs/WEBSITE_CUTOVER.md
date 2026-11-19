@@ -294,3 +294,66 @@ Then **Manage deployments → Edit → New version** (keep the URL).
    step 1, otherwise the contact topic (`interest`) is dropped.
 4. Test each form once with `adhayajeff@gmail.com` and check both inboxes.
 5. Once the contact form is confirmed working, the Formspree form can be deleted.
+
+---
+
+## 8. Resend Free-Tier Quota Optimization & Automatic Failover
+
+To keep public applicant confirmations reliable within Resend's 100 emails/day free tier (`_shared/resend.ts`, `_shared/mailer.ts`):
+
+1. **Morning Digest (`daily-digest`)**:
+   - Routed primarily through the Google Apps Script Gmail webhook (`sendNotification`), consuming **0 Resend emails**.
+2. **External Client Forwarding (`client_application_forward`) & Resend 429 Failover**:
+   - When `OPS_MAILER_EXTERNAL_ENABLED=true` is set in Supabase secrets, client forwarding (with base64 CV and Cover Letter attachments) is offloaded directly to the Google Apps Script webhook (`sendExternalViaMailer`), cutting Resend usage per job application by 50%.
+   - Whenever Resend returns HTTP `429 (daily_quota_exceeded)`, `sendConfirmation` and `sendResendEmail` automatically fail over to **Brevo** (if `BREVO_API_KEY` is configured; 300/day free tier) and then to **Google Apps Script** (if `OPS_MAILER_EXTERNAL_ENABLED=true`).
+
+### Apps Script `handleOpsNotify_` upgrade for `data.to` and `data.attachments`
+
+Replace `handleOpsNotify_(data)` in `Code.gs` with:
+
+```javascript
+function handleOpsNotify_(data) {
+  var props = PropertiesService.getScriptProperties();
+  var out = function (obj) {
+    return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(
+      ContentService.MimeType.JSON,
+    );
+  };
+  if (!data.secret || data.secret !== props.getProperty('OPS_ALERT_SECRET')) {
+    return out({ ok: false });
+  }
+  var defaultTo = props.getProperty('ALERT_TO') || 'hello@jantahr.com';
+  var to = data.to ? String(data.to).trim() : defaultTo;
+  var subject = String(data.subject || 'JantaHR Ops notification')
+    .replace(/[\r\n]+/g, ' ')
+    .slice(0, 200);
+  var options = { name: data.fromName ? String(data.fromName) : 'JantaHR Ops' };
+  if (data.replyTo) options.replyTo = String(data.replyTo);
+  if (data.html) options.htmlBody = String(data.html);
+  if (Array.isArray(data.attachments) && data.attachments.length > 0) {
+    var blobs = [];
+    for (var i = 0; i < data.attachments.length; i++) {
+      var att = data.attachments[i];
+      if (att && att.content && att.filename) {
+        blobs.push(
+          Utilities.newBlob(
+            Utilities.base64Decode(String(att.content)),
+            String(att.contentType || 'application/octet-stream'),
+            String(att.filename),
+          ),
+        );
+      }
+    }
+    if (blobs.length > 0) options.attachments = blobs;
+  }
+  GmailApp.sendEmail(to, subject, String(data.text || ''), options);
+  return out({ ok: true, to: to });
+}
+```
+
+After updating `Code.gs` (**Manage deployments → Edit → Version: New version**), enable external Apps Script routing in Supabase:
+
+```bash
+npx supabase secrets set --project-ref qjsgqskigjqrzjftunhg OPS_MAILER_EXTERNAL_ENABLED=true
+```
+
