@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { ArrowLeft, ExternalLink, FileText, Mail, MapPin, Phone, Printer } from 'lucide-react';
+import { ArrowLeft, ExternalLink, FileText, MapPin, Phone, Printer } from 'lucide-react';
 import { Logo } from '@/components/logo';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -55,6 +55,11 @@ export function SiftReportPrintView() {
     () => siftVacancyApplications(scopedApps, vacancy),
     [scopedApps, vacancy],
   );
+
+  const opsOrigin =
+    typeof window !== 'undefined' && window.location.origin
+      ? window.location.origin
+      : 'https://ops.jantahr.com';
 
   if (vacancyLoading || appsLoading || companyLoading || !vacancy || !company) {
     return (
@@ -161,6 +166,15 @@ export function SiftReportPrintView() {
               {company.phone && <p>{company.phone}</p>}
               <p className="mt-2 font-medium text-black">Prepared {formatDate(new Date())}</p>
               <p>{scopedApps.length} applicants analyzed</p>
+              <a
+                className="mt-2 inline-flex items-center gap-1 font-semibold text-gray-900 underline decoration-gray-400 underline-offset-2"
+                href={`${opsOrigin}/recruitment/${vacancy.id}`}
+                rel="noreferrer"
+                target="_blank"
+              >
+                Open Vacancy in JantaHR Ops
+                <ExternalLink className="h-3 w-3" />
+              </a>
             </div>
           </header>
 
@@ -208,8 +222,9 @@ export function SiftReportPrintView() {
           </div>
 
           <p className="mt-3 text-[11px] text-gray-500">
-            Document links embedded in this report (Open CV / Open Cover Letter) remain clickable for
-            14 days so the hiring decision-maker can review files directly from the PDF.
+            CV links embedded in this report remain clickable for 14 days. Candidate and JantaHR Ops
+            links open directly to each applicant&apos;s full profile and files inside JantaHR Ops
+            for team members with Ops logins.
           </p>
 
           {/* Section A: Most Qualified */}
@@ -239,6 +254,8 @@ export function SiftReportPrintView() {
                       docs={docs}
                       item={item}
                       key={item.application.id}
+                      opsOrigin={opsOrigin}
+                      vacancyId={vacancy.id}
                     />
                   ))}
                 </div>
@@ -273,6 +290,8 @@ export function SiftReportPrintView() {
                       docs={docs}
                       item={item}
                       key={item.application.id}
+                      opsOrigin={opsOrigin}
+                      vacancyId={vacancy.id}
                     />
                   ))}
                 </div>
@@ -298,7 +317,9 @@ export function SiftReportPrintView() {
                 docs={docs}
                 emptyMessage="No transferable or borderline candidates in this report."
                 items={siftGroups.transferable}
+                opsOrigin={opsOrigin}
                 reasonHeader="Hindsight Summary (Why Transferable / To Verify)"
+                vacancyId={vacancy.id}
               />
             </section>
           )}
@@ -320,7 +341,9 @@ export function SiftReportPrintView() {
                 docs={docs}
                 emptyMessage="No disqualified candidates in this report."
                 items={siftGroups.unqualified}
+                opsOrigin={opsOrigin}
                 reasonHeader="Reason Not Qualified"
+                vacancyId={vacancy.id}
               />
             </section>
           )}
@@ -353,17 +376,21 @@ function ReportBriefCard({
   docs,
   briefHeading,
   accent,
+  vacancyId,
+  opsOrigin,
 }: {
   item: SiftedApplicant;
   docs: ResolvedApplicationDocuments | undefined;
   briefHeading: string;
   accent: 'emerald' | 'sky';
+  vacancyId: string;
+  opsOrigin: string;
 }) {
   const candId = item.application.candidate?.id;
   const cvDoc = candId ? docs?.cvByCandidateId[candId] : undefined;
-  const coverDoc = docs?.coverByApplicationId[item.application.id];
   const tier = item.application.match_tier ?? 'unscored';
   const score = item.application.match_score;
+  const opsAppUrl = `${opsOrigin}/recruitment/${vacancyId}/applications/${item.application.id}`;
 
   const badgeCls =
     accent === 'emerald'
@@ -373,12 +400,19 @@ function ReportBriefCard({
   return (
     <article className="break-inside-avoid rounded-lg border border-gray-300 bg-white p-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
-        <div>
+        <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="rounded bg-gray-900 px-1.5 py-0.5 font-mono text-[11px] font-bold text-white">
               #{item.rank}
             </span>
-            <h3 className="font-display text-base font-bold text-black">{item.fullName}</h3>
+            <a
+              className="font-display text-base font-bold text-black underline decoration-gray-300 underline-offset-2 hover:decoration-black"
+              href={opsAppUrl}
+              rel="noreferrer"
+              target="_blank"
+            >
+              {item.fullName}
+            </a>
             <span
               className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${badgeCls}`}
             >
@@ -395,7 +429,7 @@ function ReportBriefCard({
           </p>
         </div>
 
-        {/* Clickable Document Links (active inside exported PDF) */}
+        {/* Clickable CV & JantaHR Ops Links (active inside exported PDF) */}
         <div className="flex flex-wrap items-center gap-2">
           {cvDoc ? (
             <a
@@ -412,18 +446,15 @@ function ReportBriefCard({
             <span className="text-[11px] text-gray-500">No CV</span>
           )}
 
-          {coverDoc && (
-            <a
-              className="inline-flex items-center gap-1 rounded border border-gray-400 bg-gray-50 px-2.5 py-1 text-xs font-semibold text-gray-900 underline decoration-gray-400 underline-offset-2 hover:bg-gray-100"
-              href={coverDoc.url}
-              rel="noreferrer"
-              target="_blank"
-            >
-              <Mail className="h-3.5 w-3.5" />
-              Open Cover Letter
-              <ExternalLink className="h-3 w-3" />
-            </a>
-          )}
+          <a
+            className="inline-flex items-center gap-1 rounded border border-gray-300 bg-white px-2.5 py-1 text-xs font-semibold text-gray-800 underline decoration-gray-300 underline-offset-2 hover:bg-gray-50"
+            href={opsAppUrl}
+            rel="noreferrer"
+            target="_blank"
+          >
+            View in JantaHR Ops
+            <ExternalLink className="h-3 w-3" />
+          </a>
         </div>
       </div>
 
@@ -478,12 +509,10 @@ function ReportBriefCard({
             <strong>Verify / Watchout:</strong> {item.watchouts.join(' · ')}
           </p>
         )}
-        {!coverDoc && item.coverNoteText && (
-          <p className="text-gray-600">
-            <strong className="text-gray-800">Cover Note:</strong>{' '}
-            {item.coverNoteText.length > 220
-              ? `${item.coverNoteText.slice(0, 220).trimEnd()}…`
-              : item.coverNoteText}
+        {item.coverLetterSummary && (
+          <p className="text-gray-700">
+            <strong className="text-gray-900">Cover Letter &amp; Practical Fit:</strong>{' '}
+            {item.coverLetterSummary}
           </p>
         )}
       </div>
@@ -496,11 +525,15 @@ function CompactAppendixTable({
   docs,
   reasonHeader,
   emptyMessage,
+  vacancyId,
+  opsOrigin,
 }: {
   items: SiftedApplicant[];
   docs: ResolvedApplicationDocuments | undefined;
   reasonHeader: string;
   emptyMessage: string;
+  vacancyId: string;
+  opsOrigin: string;
 }) {
   if (items.length === 0) {
     return <p className="py-4 text-xs text-gray-600">{emptyMessage}</p>;
@@ -514,24 +547,29 @@ function CompactAppendixTable({
           <th className="py-2 pr-3">Candidate &amp; Contact</th>
           <th className="py-2 pr-3">Location &amp; Exp</th>
           <th className="py-2 pr-3">{reasonHeader}</th>
-          <th className="py-2 text-right">Documents</th>
+          <th className="py-2 text-right">Links</th>
         </tr>
       </thead>
       <tbody>
         {items.map((item) => {
           const candId = item.application.candidate?.id;
           const cvDoc = candId ? docs?.cvByCandidateId[candId] : undefined;
-          const coverDoc = docs?.coverByApplicationId[item.application.id];
           const score = item.application.match_score;
+          const opsAppUrl = `${opsOrigin}/recruitment/${vacancyId}/applications/${item.application.id}`;
 
           return (
             <tr className="break-inside-avoid border-b border-gray-200 align-top" key={item.application.id}>
               <td className="py-2 pr-2 font-mono text-gray-600">{item.rank}</td>
               <td className="py-2 pr-3">
-                <p className="font-semibold text-black">
+                <a
+                  className="font-semibold text-black underline decoration-gray-300 underline-offset-2"
+                  href={opsAppUrl}
+                  rel="noreferrer"
+                  target="_blank"
+                >
                   {item.fullName}
                   {score != null ? ` (${score})` : ''}
-                </p>
+                </a>
                 <p className="text-[11px] text-gray-600">{item.recentRoleLine}</p>
                 {(item.phone || item.email) && (
                   <p className="text-[11px] text-gray-500">
@@ -562,18 +600,16 @@ function CompactAppendixTable({
                       CV ↗
                     </a>
                   ) : (
-                    <span className="text-[11px] text-gray-400">—</span>
+                    <span className="text-[11px] text-gray-400">No CV</span>
                   )}
-                  {coverDoc && (
-                    <a
-                      className="font-semibold text-gray-900 underline"
-                      href={coverDoc.url}
-                      rel="noreferrer"
-                      target="_blank"
-                    >
-                      Cover ↗
-                    </a>
-                  )}
+                  <a
+                    className="text-[11px] font-medium text-gray-700 underline"
+                    href={opsAppUrl}
+                    rel="noreferrer"
+                    target="_blank"
+                  >
+                    Ops ↗
+                  </a>
                 </div>
               </td>
             </tr>

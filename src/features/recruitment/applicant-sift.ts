@@ -72,6 +72,7 @@ export interface SiftedApplicant {
   hasCv: boolean;
   hasCoverLetterFile: boolean;
   coverNoteText: string | null;
+  coverLetterSummary: string | null;
   cvParsed: CvParsedData | null;
   assessment: ApplicationAiAssessment | null;
   locationLabel: string;
@@ -299,11 +300,84 @@ function resolveOverqualifiedThreshold(vacancy?: VacancyRow | null): number {
   return 4;
 }
 
-function trimSentence(text: string | null | undefined, maxLen = 220): string {
-  const cleaned = (text ?? '').replace(/\s+/g, ' ').trim();
-  if (!cleaned) return '';
-  if (cleaned.length <= maxLen) return cleaned;
-  return `${cleaned.slice(0, maxLen - 1).trimEnd()}…`;
+function cleanTextBlock(text: string | null | undefined): string {
+  return (text ?? '').replace(/\s+/g, ' ').trim();
+}
+
+function splitCompleteSentences(text: string): string[] {
+  const matches = text.match(/[^.!?]+[.!?]+/g);
+  if (!matches) {
+    const trimmed = text.trim();
+    return trimmed ? [trimmed.endsWith('.') ? trimmed : `${trimmed}.`] : [];
+  }
+  return matches.map((s) => s.trim()).filter(Boolean);
+}
+
+/**
+ * Distills what the candidate actually said in their cover letter / practical note
+ * without dumping raw addresses, greetings, or "salary not stated" boilerplate.
+ */
+export function buildCoverLetterSummary(
+  assessment: ApplicationAiAssessment | null,
+  coverNoteText: string | null,
+  hasCoverLetterFile: boolean,
+): string | null {
+  const aiPracticalRaw = cleanTextBlock(assessment?.pillars.practical_and_cover_note.note);
+  const aiSentences = aiPracticalRaw
+    ? splitCompleteSentences(aiPracticalRaw).filter((s) => !/\bsalary\b/i.test(s))
+    : [];
+
+  let noteSentences: string[] = [];
+  if (coverNoteText) {
+    let stripped = coverNoteText.replace(/\r?\n/g, ' ').replace(/\s+/g, ' ').trim();
+    const salutationMatch = stripped.match(
+      /^.*?\b(?:dear\s+(?:hiring\s+(?:manager|team)|recruitment\s+team|sir(?:\s*\/\s*madam)?|madam|recruiter|hr\s+team)[^.,:\n]*[.,:]?)\s*/i,
+    );
+    if (salutationMatch) {
+      stripped = stripped.slice(salutationMatch[0].length).trim();
+    } else {
+      const reMatch = stripped.match(/^.*?\bRE:\s*APPLICATION[^\n.]*[.:]?\s*/i);
+      if (reMatch) stripped = stripped.slice(reMatch[0].length).trim();
+    }
+    stripped = stripped
+      .replace(/\b(?:yours\s+(?:faithfully|sincerely)|kind\s+regards|best\s+regards|sincerely)[,\s]*.*$/i, '')
+      .trim();
+
+    const rawNoteSentences = splitCompleteSentences(stripped).filter(
+      (s) => s.length > 20 && !/^i am writing to (?:express|apply)|^i wish to apply|^please find attached/i.test(s),
+    );
+    noteSentences = rawNoteSentences.slice(0, 2);
+  }
+
+  const aiMentionsCover = aiSentences.some((s) => /cover\s+(?:letter|note)/i.test(s));
+  if (aiSentences.length > 0 && aiMentionsCover) {
+    // Include the AI practical/cover letter verdict plus up to 1 concrete claim from the text if available and distinct
+    const combined = noteSentences.length > 0 ? [...aiSentences, noteSentences[0]!] : aiSentences;
+    return combined.join(' ');
+  }
+
+  if (noteSentences.length > 0) {
+    return [...aiSentences, ...noteSentences].join(' ');
+  }
+
+  if (aiSentences.length > 0) {
+    return aiSentences.join(' ');
+  }
+
+  if (coverNoteText && coverNoteText.trim()) {
+    let stripped = coverNoteText.replace(/\r?\n/g, ' ').replace(/\s+/g, ' ').trim();
+    const salutationMatch = stripped.match(
+      /^.*?\b(?:dear\s+(?:hiring\s+(?:manager|team)|recruitment\s+team|sir(?:\s*\/\s*madam)?|madam|recruiter|hr\s+team)[^.,:\n]*[.,:]?)\s*/i,
+    );
+    if (salutationMatch) stripped = stripped.slice(salutationMatch[0].length).trim();
+    return splitCompleteSentences(stripped || cleanTextBlock(coverNoteText)).slice(0, 2).join(' ');
+  }
+
+  if (hasCoverLetterFile) {
+    return 'Submitted a separate cover letter file (accessible inside JantaHR Ops).';
+  }
+
+  return null;
 }
 
 /**
@@ -507,14 +581,8 @@ export function classifyApplicationForSift(
       ? `based in ${locationInfo.label}`
       : locationInfo.label;
     const excelDesc = excelLevel ? `Excel: ${excelLevel}` : null;
-    const firstStrength = strengths[0] ? trimSentence(strengths[0], 110) : null;
-    whyBucket = [
-      `In target range (${expDesc}), ${locDesc}`,
-      excelDesc,
-      firstStrength,
-    ]
-      .filter(Boolean)
-      .join(' · ') + '.';
+    whyBucket =
+      [`In target range (${expDesc}), ${locDesc}`, excelDesc].filter(Boolean).join(' · ') + '.';
   } else if (bucket === 'overqualified') {
     const titlePart = seniorHrRoleLabel ? `held senior title (${seniorHrRoleLabel})` : null;
     const yrsPart =
@@ -543,14 +611,14 @@ export function classifyApplicationForSift(
       reasons.push(`Borderline match (${score ?? 'unscored'}/100) with transferable Admin/Ops experience`);
     }
     if (watchouts[0]) {
-      reasons.push(trimSentence(watchouts[0], 100));
+      reasons.push(cleanTextBlock(watchouts[0]).replace(/\.+$/, ''));
     }
     whyBucket = `${reasons.join(' · ')}.`;
   } else {
     if (!locationInfo.canWorkInKampala) {
       whyBucket = 'Does not qualify: Based outside Uganda and unable to relocate to Kampala.';
     } else if (hasBlockerFlag && watchouts[0]) {
-      whyBucket = `Critical gap: ${trimSentence(watchouts[0], 150)}`;
+      whyBucket = `Critical gap: ${cleanTextBlock(watchouts[0])}`;
     } else if (cvParsed?.readability === 'unreadable') {
       whyBucket = 'Needs manual check / low fit: Uploaded CV could not be read automatically.';
     } else {
@@ -560,10 +628,18 @@ export function classifyApplicationForSift(
     }
   }
 
+  const hasCoverLetterFile = Boolean(parsedNotes.coverLetterPath);
+  const coverLetterSummary = buildCoverLetterSummary(
+    assessment,
+    parsedNotes.cleanCoverNote,
+    hasCoverLetterFile,
+  );
+
   const narrative =
-    trimSentence(assessment?.summary, 240) ||
-    trimSentence(cvParsed?.summary, 240) ||
-    (parsedNotes.cleanCoverNote ? trimSentence(parsedNotes.cleanCoverNote, 200) : 'No summary available yet.');
+    cleanTextBlock(assessment?.summary) ||
+    cleanTextBlock(cvParsed?.summary) ||
+    coverLetterSummary ||
+    'No summary available yet.';
 
   return {
     application: app,
@@ -574,8 +650,9 @@ export function classifyApplicationForSift(
     phone: contact?.phone_e164 ?? null,
     linkedInUrl: parsedNotes.linkedInUrl,
     hasCv: Boolean(candidate?.cv_file_id),
-    hasCoverLetterFile: Boolean(parsedNotes.coverLetterPath),
+    hasCoverLetterFile,
     coverNoteText: parsedNotes.cleanCoverNote,
+    coverLetterSummary,
     cvParsed,
     assessment,
     locationLabel: locationInfo.label,

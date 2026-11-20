@@ -124,12 +124,51 @@ function makeApp(overrides: Partial<ApplicationWithRelations> = {}): Application
 
 describe('applicant-sift classification', () => {
   it('places a 0-2 yr Kampala HR Assistant in most_qualified', () => {
-    const result = classifyApplicationForSift(makeApp(), HR_ASSISTANT_VACANCY, NOW);
+    const longSummary =
+      'She is a strong direct HR fit with two years of documented HR Assistant experience in Kampala covering employee onboarding, confidential personnel file audits, leave tracking, NSSF submissions, and monthly payroll-input checks with project supervisors.';
+    const result = classifyApplicationForSift(
+      makeApp({
+        notes:
+          '[Cover Letter]\nJane Doe Kampala +256772111222 RE: APPLICATION FOR HR ASSISTANT Dear Hiring Manager, I am writing to express my interest in the HR Assistant position. I managed confidential employee files and monthly attendance trackers for 90 field staff in Kampala.',
+        ai_assessment: {
+          version: 1,
+          status: 'scored',
+          status_note: null,
+          summary: longSummary,
+          hindrance_flags: [],
+          pillars: {
+            core_skills: { score: 28, max: 35, note: '' },
+            transferable_and_industry: { score: 24, max: 30, note: '' },
+            experience_and_trajectory: { score: 17, max: 20, note: '' },
+            practical_and_cover_note: {
+              score: 13,
+              max: 15,
+              note: 'Kampala location and immediate availability align. Salary was not stated and is not assessed.',
+            },
+          },
+          strengths: ['Payroll & leave admin', 'Intermediate Excel'],
+          transferable_skills: ['Client follow-up'],
+          gaps_or_risks: [],
+          interview_questions: [],
+          model: 'gpt-6-luna',
+          evaluated_at: '2026-11-18T09:05:00Z',
+        },
+      }),
+      HR_ASSISTANT_VACANCY,
+      NOW,
+    );
     expect(result.bucket).toBe('most_qualified');
     expect(result.isKampalaMetro).toBe(true);
     expect(result.excelLevel).toBe('Intermediate');
     expect(result.hrYears).toBeLessThan(4);
     expect(result.whyBucket).toContain('target range');
+    expect(result.whyBucket).not.toContain('…');
+    expect(result.narrative).toBe(longSummary);
+    expect(result.narrative).not.toContain('…');
+    expect(result.coverLetterSummary).toContain('Kampala location and immediate availability align');
+    expect(result.coverLetterSummary).toContain('managed confidential employee files');
+    expect(result.coverLetterSummary).not.toMatch(/Salary was not stated/i);
+    expect(result.coverLetterSummary).not.toMatch(/Dear Hiring Manager/i);
   });
 
   it('places a fresh B.HRM graduate with a 6-month HR internship in most_qualified', () => {

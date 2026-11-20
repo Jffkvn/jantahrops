@@ -610,24 +610,30 @@ export function ApplicantSiftView({
                             <div className="mt-2.5 rounded-control border border-border/80 bg-surface-sunken/35 px-3 py-2 text-xs">
                               <p className="font-medium text-ink">{item.whyBucket}</p>
                               <p className="mt-1 text-ink-secondary">{item.narrative}</p>
+                              {item.coverLetterSummary && (
+                                <p className="mt-1.5 text-ink-secondary">
+                                  <strong className="text-ink">Cover Letter &amp; Fit:</strong>{' '}
+                                  {item.coverLetterSummary}
+                                </p>
+                              )}
                               {(item.strengths.length > 0 || item.watchouts.length > 0) && (
-                                <div className="mt-2 flex flex-wrap gap-1.5">
+                                <div className="mt-2 flex flex-col gap-1">
                                   {item.strengths.slice(0, 2).map((s) => (
                                     <span
-                                      className="inline-flex items-center gap-1 rounded-pill bg-success-soft px-2 py-0.5 text-[11px] text-success-ink"
+                                      className="inline-flex items-start gap-1.5 rounded-control bg-success-soft px-2 py-1 text-[11px] text-success-ink"
                                       key={s}
                                     >
-                                      <CheckCircle2 className="h-3 w-3 shrink-0" />
-                                      <span className="max-w-[260px] truncate">{s}</span>
+                                      <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0" />
+                                      <span>{s}</span>
                                     </span>
                                   ))}
                                   {item.watchouts.slice(0, 1).map((w) => (
                                     <span
-                                      className="inline-flex items-center gap-1 rounded-pill bg-warning-soft px-2 py-0.5 text-[11px] text-warning-ink"
+                                      className="inline-flex items-start gap-1.5 rounded-control bg-warning-soft px-2 py-1 text-[11px] text-warning-ink"
                                       key={w}
                                     >
-                                      <AlertTriangle className="h-3 w-3 shrink-0" />
-                                      <span className="max-w-[280px] truncate">{w}</span>
+                                      <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+                                      <span>{w}</span>
                                     </span>
                                   ))}
                                 </div>
