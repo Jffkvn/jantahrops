@@ -313,9 +313,23 @@ function splitCompleteSentences(text: string): string[] {
   return matches.map((s) => s.trim()).filter(Boolean);
 }
 
+const COVER_LETTER_EVAL_SENTENCE_RE =
+  /\b(?:cover\s+(?:letter|note)|the\s+letter|application\s+letter|tailored|generic|addresses\s+(?:the|this)\s+(?:role|vacancy|client|project|duties))\b/i;
+
+const BOILERPLATE_SENTENCE_RE =
+  /\b(?:salary|expected\s+pay|kampala|location|availability|notice\s+period|immediately|available\s+in|relocate|hindrance)\b/i;
+
+function formatThemeList(items: string[]): string {
+  if (items.length === 0) return '';
+  if (items.length === 1) return items[0]!;
+  if (items.length === 2) return `${items[0]} and ${items[1]}`;
+  return `${items.slice(0, -1).join(', ')}, and ${items[items.length - 1]}`;
+}
+
 /**
- * Distills what the candidate actually said in their cover letter / practical note
- * without dumping raw addresses, greetings, or "salary not stated" boilerplate.
+ * Produces a genuine third-person analysis of the candidate's cover letter:
+ * keeps only the AI's tailoring critique (without repeating location/availability/salary)
+ * and synthesizes the specific HR/client themes highlighted in the submitted text.
  */
 export function buildCoverLetterSummary(
   assessment: ApplicationAiAssessment | null,
@@ -323,58 +337,78 @@ export function buildCoverLetterSummary(
   hasCoverLetterFile: boolean,
 ): string | null {
   const aiPracticalRaw = cleanTextBlock(assessment?.pillars.practical_and_cover_note.note);
-  const aiSentences = aiPracticalRaw
-    ? splitCompleteSentences(aiPracticalRaw).filter((s) => !/\bsalary\b/i.test(s))
+  const critiqueSentences = aiPracticalRaw
+    ? splitCompleteSentences(aiPracticalRaw).filter(
+        (s) =>
+          COVER_LETTER_EVAL_SENTENCE_RE.test(s) &&
+          !(/\bsalary\b/i.test(s) && !COVER_LETTER_EVAL_SENTENCE_RE.test(s.replace(/[^.]*salary[^.]*/gi, ''))),
+      )
     : [];
 
-  let noteSentences: string[] = [];
-  if (coverNoteText) {
-    let stripped = coverNoteText.replace(/\r?\n/g, ' ').replace(/\s+/g, ' ').trim();
-    const salutationMatch = stripped.match(
-      /^.*?\b(?:dear\s+(?:hiring\s+(?:manager|team)|recruitment\s+team|sir(?:\s*\/\s*madam)?|madam|recruiter|hr\s+team)[^.,:\n]*[.,:]?)\s*/i,
-    );
-    if (salutationMatch) {
-      stripped = stripped.slice(salutationMatch[0].length).trim();
-    } else {
-      const reMatch = stripped.match(/^.*?\bRE:\s*APPLICATION[^\n.]*[.:]?\s*/i);
-      if (reMatch) stripped = stripped.slice(reMatch[0].length).trim();
-    }
-    stripped = stripped
-      .replace(/\b(?:yours\s+(?:faithfully|sincerely)|kind\s+regards|best\s+regards|sincerely)[,\s]*.*$/i, '')
-      .trim();
+  // Strip trailing "; salary was not..." clauses attached to a cover-letter sentence.
+  const cleanedCritique = critiqueSentences
+    .map((s) =>
+      s
+        .replace(/;\s*no\s+salary[^.]*/gi, '')
+        .replace(/;\s*salary\s+was\s+not[^.]*/gi, '')
+        .trim(),
+    )
+    .map((s) => (/[.!?]$/.test(s) ? s : `${s}.`));
 
-    const rawNoteSentences = splitCompleteSentences(stripped).filter(
-      (s) => s.length > 20 && !/^i am writing to (?:express|apply)|^i wish to apply|^please find attached/i.test(s),
+  let textAnalysis: string | null = null;
+  if (coverNoteText && coverNoteText.trim()) {
+    const mentionsTelecomClient = /\b(?:fibre|fiber|telecom|telecommunications|network\s+maintenance|field\s+technician)\b/i.test(
+      coverNoteText,
     );
-    noteSentences = rawNoteSentences.slice(0, 2);
+    const themes: string[] = [];
+
+    if (/\b(?:employee\s+files|personnel\s+files|confidential\s+records|audit[- ]ready|record[- ]keeping|filing\s+system|employee\s+records)\b/i.test(coverNoteText)) {
+      themes.push('managing confidential employee files and audit-ready records');
+    }
+    if (/\b(?:attendance|timesheet|leave\s+track|absence|shift\s+roster|overtime)\b/i.test(coverNoteText)) {
+      themes.push('tracking staff attendance, timesheets, and leave');
+    }
+    if (/\b(?:payroll|nssf|paye|statutory\s+deductions|remittance)\b/i.test(coverNoteText)) {
+      themes.push('preparing payroll inputs and NSSF/PAYE compliance');
+    }
+    if (/\b(?:onboarding|orientation|recruitment|shortlisting|interview\s+coordination|hiring)\b/i.test(coverNoteText)) {
+      themes.push('coordinating recruitment and staff onboarding');
+    }
+    if (/\b(?:project\s+site|field\s+staff|field\s+team|supervisors?|eacop|pipeline|multi[- ]?site)\b/i.test(coverNoteText)) {
+      themes.push('following up with field teams and project supervisors');
+    }
+
+    const parts: string[] = [];
+    if (mentionsTelecomClient && !cleanedCritique.some((s) => /\b(fibre|fiber|telecom)\b/i.test(s))) {
+      parts.push("specifically references the client's fibre-network / telecom operations");
+    }
+    if (themes.length > 0) {
+      parts.push(`emphasizes experience in ${formatThemeList(themes)}`);
+    }
+
+    if (parts.length > 0) {
+      textAnalysis = `In the letter, the candidate ${parts.join(' and ')}.`;
+    } else if (cleanedCritique.length === 0) {
+      const hasHrKeywords = HR_ROLE_OR_INDUSTRY_RE.test(coverNoteText) || HR_EDUCATION_RE.test(coverNoteText);
+      textAnalysis = hasHrKeywords
+        ? 'Submitted a brief application letter expressing interest in the HR role without citing specific measurable achievements or client-sector context.'
+        : 'Submitted a brief general note without specific HR deliverables or client-sector context.';
+    }
   }
 
-  const aiMentionsCover = aiSentences.some((s) => /cover\s+(?:letter|note)/i.test(s));
-  if (aiSentences.length > 0 && aiMentionsCover) {
-    // Include the AI practical/cover letter verdict plus up to 1 concrete claim from the text if available and distinct
-    const combined = noteSentences.length > 0 ? [...aiSentences, noteSentences[0]!] : aiSentences;
+  // Filter out empty or non-cover AI sentences only as a safeguard when no cover critique matched
+  const fallbackAi =
+    cleanedCritique.length === 0 && aiPracticalRaw
+      ? splitCompleteSentences(aiPracticalRaw).filter((s) => !BOILERPLATE_SENTENCE_RE.test(s))
+      : [];
+
+  const combined = [...cleanedCritique, ...(textAnalysis ? [textAnalysis] : []), ...fallbackAi];
+  if (combined.length > 0) {
     return combined.join(' ');
   }
 
-  if (noteSentences.length > 0) {
-    return [...aiSentences, ...noteSentences].join(' ');
-  }
-
-  if (aiSentences.length > 0) {
-    return aiSentences.join(' ');
-  }
-
-  if (coverNoteText && coverNoteText.trim()) {
-    let stripped = coverNoteText.replace(/\r?\n/g, ' ').replace(/\s+/g, ' ').trim();
-    const salutationMatch = stripped.match(
-      /^.*?\b(?:dear\s+(?:hiring\s+(?:manager|team)|recruitment\s+team|sir(?:\s*\/\s*madam)?|madam|recruiter|hr\s+team)[^.,:\n]*[.,:]?)\s*/i,
-    );
-    if (salutationMatch) stripped = stripped.slice(salutationMatch[0].length).trim();
-    return splitCompleteSentences(stripped || cleanTextBlock(coverNoteText)).slice(0, 2).join(' ');
-  }
-
   if (hasCoverLetterFile) {
-    return 'Submitted a separate cover letter file (accessible inside JantaHR Ops).';
+    return 'Submitted a separate cover letter document (viewable inside JantaHR Ops).';
   }
 
   return null;

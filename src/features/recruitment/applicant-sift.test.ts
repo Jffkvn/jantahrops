@@ -129,7 +129,7 @@ describe('applicant-sift classification', () => {
     const result = classifyApplicationForSift(
       makeApp({
         notes:
-          '[Cover Letter]\nJane Doe Kampala +256772111222 RE: APPLICATION FOR HR ASSISTANT Dear Hiring Manager, I am writing to express my interest in the HR Assistant position. I managed confidential employee files and monthly attendance trackers for 90 field staff in Kampala.',
+          '[Cover Letter]\nJane Doe Kampala +256772111222 RE: APPLICATION FOR HR ASSISTANT Dear Hiring Manager, I am writing to express my interest in the HR Assistant role supporting your client’s fibre-network maintenance project. I managed confidential employee files, payroll inputs, NSSF remittances, and monthly attendance trackers for field technicians in Kampala.',
         ai_assessment: {
           version: 1,
           status: 'scored',
@@ -143,7 +143,7 @@ describe('applicant-sift classification', () => {
             practical_and_cover_note: {
               score: 13,
               max: 15,
-              note: 'Kampala location and immediate availability align. Salary was not stated and is not assessed.',
+              note: 'Kampala location and immediate availability align. The cover letter is thoughtfully tailored to the fibre-network role and cites relevant results. Salary was not stated and is not assessed.',
             },
           },
           strengths: ['Payroll & leave admin', 'Intermediate Excel'],
@@ -165,9 +165,15 @@ describe('applicant-sift classification', () => {
     expect(result.whyBucket).not.toContain('…');
     expect(result.narrative).toBe(longSummary);
     expect(result.narrative).not.toContain('…');
-    expect(result.coverLetterSummary).toContain('Kampala location and immediate availability align');
-    expect(result.coverLetterSummary).toContain('managed confidential employee files');
+    expect(result.coverLetterSummary).toContain(
+      'The cover letter is thoughtfully tailored to the fibre-network role and cites relevant results.',
+    );
+    expect(result.coverLetterSummary).toContain('In the letter, the candidate emphasizes experience in');
+    expect(result.coverLetterSummary).toContain('managing confidential employee files');
+    expect(result.coverLetterSummary).toContain('preparing payroll inputs and NSSF/PAYE compliance');
+    expect(result.coverLetterSummary).not.toMatch(/Kampala location and immediate availability/i);
     expect(result.coverLetterSummary).not.toMatch(/Salary was not stated/i);
+    expect(result.coverLetterSummary).not.toMatch(/I am writing/i);
     expect(result.coverLetterSummary).not.toMatch(/Dear Hiring Manager/i);
   });
 

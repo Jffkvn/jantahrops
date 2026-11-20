@@ -198,3 +198,26 @@
 
 /* 3. Class-based dark variant */
 @custom-variant dark (&:is(.dark *));
+
+/* 4. Mode-independent JantaHR brand teal utilities for light print/PDF reports */
+.bg-brand-teal {
+  background-color: #0B5978;
+}
+.bg-brand-teal-soft {
+  background-color: #E6EFF3;
+}
+.text-brand-teal {
+  color: #0B5978;
+}
+.text-brand-teal-dark {
+  color: #063B51;
+}
+.border-brand-teal {
+  border-color: #0B5978;
+}
+.border-l-brand-teal {
+  border-left-color: #0B5978;
+}
+.border-brand-teal-soft {
+  border-color: #B8D4E0;
+}

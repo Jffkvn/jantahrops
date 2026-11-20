@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { ArrowLeft, ExternalLink, FileText, MapPin, Phone, Printer } from 'lucide-react';
-import { Logo } from '@/components/logo';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -141,15 +140,17 @@ export function SiftReportPrintView() {
         </div>
 
         {/* Printable Briefing Document */}
-        <div className="sheet bg-white p-10 text-black shadow-xl print:p-0 print:shadow-none">
+        <div className="sheet border-t-4 border-brand-teal bg-white p-10 text-black shadow-xl print:p-0 print:shadow-none">
           {/* Cover / Executive Header */}
           <header className="flex items-start justify-between border-b border-gray-300 pb-6">
             <div>
-              <Logo className="text-black" size={38} title="JantaHR" />
-              <p className="mt-4 text-xs font-semibold uppercase tracking-wider text-gray-500">
-                Executive Applicant Sift Briefing
-              </p>
-              <h1 className="font-display mt-1 text-2xl font-bold text-black">{vacancy.title}</h1>
+              <JantaHrBrandLogo />
+              <div className="mt-4">
+                <span className="inline-block rounded bg-brand-teal-soft px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wider text-brand-teal">
+                  Executive Applicant Sift Briefing
+                </span>
+              </div>
+              <h1 className="font-display mt-2 text-2xl font-bold text-black">{vacancy.title}</h1>
               <p className="mt-0.5 text-sm font-medium text-gray-700">
                 {vacancy.organisation?.name ?? 'Unassigned client'}
                 {vacancy.location ? ` · ${vacancy.location}` : ''}
@@ -161,19 +162,19 @@ export function SiftReportPrintView() {
               )}
             </div>
             <div className="text-right text-xs text-gray-700">
-              <p className="text-sm font-semibold text-black">{company.legal_name}</p>
+              <p className="text-sm font-semibold text-brand-teal-dark">{company.legal_name}</p>
               {company.email && <p>{company.email}</p>}
               {company.phone && <p>{company.phone}</p>}
               <p className="mt-2 font-medium text-black">Prepared {formatDate(new Date())}</p>
               <p>{scopedApps.length} applicants analyzed</p>
               <a
-                className="mt-2 inline-flex items-center gap-1 font-semibold text-gray-900 underline decoration-gray-400 underline-offset-2"
+                className="mt-2.5 inline-flex items-center gap-1 rounded border border-brand-teal bg-brand-teal-soft px-2.5 py-1 text-xs font-semibold text-brand-teal-dark hover:opacity-90"
                 href={`${opsOrigin}/recruitment/${vacancy.id}`}
                 rel="noreferrer"
                 target="_blank"
               >
                 Open Vacancy in JantaHR Ops
-                <ExternalLink className="h-3 w-3" />
+                <ExternalLink className="h-3 w-3 text-brand-teal" />
               </a>
             </div>
           </header>
@@ -230,8 +231,8 @@ export function SiftReportPrintView() {
           {/* Section A: Most Qualified */}
           {includeMostQualified && (
             <section className="mt-8">
-              <div className="border-b-2 border-emerald-600 pb-2">
-                <h2 className="font-display text-lg font-bold text-black">
+              <div className="border-b-2 border-brand-teal pb-2">
+                <h2 className="font-display text-lg font-bold text-brand-teal-dark">
                   Section A — {SIFT_BUCKET_META.most_qualified.label} (
                   {siftGroups.most_qualified.length})
                 </h2>
@@ -394,19 +395,24 @@ function ReportBriefCard({
 
   const badgeCls =
     accent === 'emerald'
-      ? 'border-emerald-300 bg-emerald-50 text-emerald-950'
+      ? 'border-brand-teal-soft bg-brand-teal-soft text-brand-teal-dark'
       : 'border-sky-300 bg-sky-50 text-sky-950';
 
+  const cardBorderCls =
+    accent === 'emerald' ? 'border-l-4 border-l-brand-teal' : 'border-l-4 border-l-sky-600';
+
   return (
-    <article className="break-inside-avoid rounded-lg border border-gray-300 bg-white p-4">
+    <article
+      className={`break-inside-avoid rounded-lg border border-gray-300 bg-white p-4 ${cardBorderCls}`}
+    >
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded bg-gray-900 px-1.5 py-0.5 font-mono text-[11px] font-bold text-white">
+            <span className="rounded bg-brand-teal px-1.5 py-0.5 font-mono text-[11px] font-bold text-white">
               #{item.rank}
             </span>
             <a
-              className="font-display text-base font-bold text-black underline decoration-gray-300 underline-offset-2 hover:decoration-black"
+              className="font-display text-base font-bold text-brand-teal-dark underline decoration-gray-300 underline-offset-2 hover:decoration-current"
               href={opsAppUrl}
               rel="noreferrer"
               target="_blank"
@@ -433,7 +439,7 @@ function ReportBriefCard({
         <div className="flex flex-wrap items-center gap-2">
           {cvDoc ? (
             <a
-              className="inline-flex items-center gap-1 rounded border border-gray-400 bg-gray-50 px-2.5 py-1 text-xs font-semibold text-gray-900 underline decoration-gray-400 underline-offset-2 hover:bg-gray-100"
+              className="inline-flex items-center gap-1 rounded bg-brand-teal px-2.5 py-1 text-xs font-semibold text-white hover:opacity-95"
               href={cvDoc.url}
               rel="noreferrer"
               target="_blank"
@@ -447,43 +453,44 @@ function ReportBriefCard({
           )}
 
           <a
-            className="inline-flex items-center gap-1 rounded border border-gray-300 bg-white px-2.5 py-1 text-xs font-semibold text-gray-800 underline decoration-gray-300 underline-offset-2 hover:bg-gray-50"
+            className="inline-flex items-center gap-1 rounded border border-brand-teal bg-brand-teal-soft px-2.5 py-1 text-xs font-semibold text-brand-teal-dark hover:opacity-90"
             href={opsAppUrl}
             rel="noreferrer"
             target="_blank"
           >
             View in JantaHR Ops
-            <ExternalLink className="h-3 w-3" />
+            <ExternalLink className="h-3 w-3 text-brand-teal" />
           </a>
         </div>
       </div>
 
       {/* Location, HR Experience, Excel, Phone & Email */}
-      <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 border-y border-gray-200 py-1.5 text-xs text-gray-700">
-        <span className="inline-flex items-center gap-1 font-medium text-gray-900">
-          <MapPin className="h-3.5 w-3.5 text-gray-500" />
+      <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 rounded border border-brand-teal-soft bg-brand-teal-soft px-3 py-1.5 text-xs text-brand-teal-dark">
+        <span className="inline-flex items-center gap-1 font-semibold">
+          <MapPin className="h-3.5 w-3.5 text-brand-teal" />
           {item.locationLabel}
         </span>
         <span>
-          <strong>HR Exp:</strong> {item.hrYears > 0 ? `${item.hrYears} yrs` : '0 yrs direct'}
+          <strong className="text-brand-teal">HR Exp:</strong>{' '}
+          {item.hrYears > 0 ? `${item.hrYears} yrs` : '0 yrs direct'}
           {item.totalYears != null && item.totalYears > item.hrYears
             ? ` (${item.totalYears} yrs total)`
             : ''}
         </span>
         {item.excelLevel && (
           <span>
-            <strong>Excel:</strong> {item.excelLevel}
+            <strong className="text-brand-teal">Excel:</strong> {item.excelLevel}
           </span>
         )}
         {item.phone && (
           <span className="inline-flex items-center gap-1">
-            <Phone className="h-3 w-3 text-gray-500" />
+            <Phone className="h-3 w-3 text-brand-teal" />
             {formatPhoneDisplay(item.phone)}
           </span>
         )}
         {item.email && (
           <a
-            className="text-gray-800 underline decoration-gray-300"
+            className="font-medium text-brand-teal underline"
             href={`mailto:${item.email}`}
           >
             {item.email}
@@ -494,7 +501,7 @@ function ReportBriefCard({
       {/* Hindsight Narrative */}
       <div className="mt-2.5 space-y-1.5 text-xs leading-relaxed">
         <p className="text-gray-900">
-          <strong className="text-black">{briefHeading}:</strong> {item.whyBucket}
+          <strong className="text-brand-teal-dark">{briefHeading}:</strong> {item.whyBucket}
         </p>
         <p className="text-gray-700">{item.narrative}</p>
 
@@ -510,8 +517,8 @@ function ReportBriefCard({
           </p>
         )}
         {item.coverLetterSummary && (
-          <p className="text-gray-700">
-            <strong className="text-gray-900">Cover Letter &amp; Practical Fit:</strong>{' '}
+          <p className="text-gray-800">
+            <strong className="text-brand-teal-dark">Cover Letter Analysis:</strong>{' '}
             {item.coverLetterSummary}
           </p>
         )}
@@ -592,7 +599,7 @@ function CompactAppendixTable({
                 <div className="inline-flex flex-col items-end gap-1">
                   {cvDoc ? (
                     <a
-                      className="font-semibold text-gray-900 underline"
+                      className="font-semibold text-brand-teal underline"
                       href={cvDoc.url}
                       rel="noreferrer"
                       target="_blank"
@@ -603,7 +610,7 @@ function CompactAppendixTable({
                     <span className="text-[11px] text-gray-400">No CV</span>
                   )}
                   <a
-                    className="text-[11px] font-medium text-gray-700 underline"
+                    className="text-[11px] font-medium text-brand-teal-dark underline"
                     href={opsAppUrl}
                     rel="noreferrer"
                     target="_blank"
@@ -617,5 +624,42 @@ function CompactAppendixTable({
         })}
       </tbody>
     </table>
+  );
+}
+
+/**
+ * Full JantaHR brand logo in vector brand teal: open-right-edge square mark
+ * with the "JantaHR" wordmark crossing cleanly through the opening.
+ */
+function JantaHrBrandLogo() {
+  return (
+    <svg
+      aria-label="JantaHR"
+      className="h-12 w-auto shrink-0 text-brand-teal"
+      role="img"
+      viewBox="0 0 190 100"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <title>JantaHR</title>
+      <path
+        d="M 96 26 L 96 3 L 3 3 L 3 97 L 96 97 L 96 74"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="butt"
+        strokeLinejoin="miter"
+        strokeWidth="4.5"
+      />
+      <text
+        fill="currentColor"
+        fontFamily="'Satoshi', ui-sans-serif, system-ui, -apple-system, sans-serif"
+        fontSize="36"
+        fontWeight="600"
+        letterSpacing="-0.8"
+        x="24"
+        y="60"
+      >
+        JantaHR
+      </text>
+    </svg>
   );
 }
