@@ -8,6 +8,7 @@ import {
   publishVacancy,
   closeVacancy,
   listApplications,
+  resolveApplicationDocumentUrls,
   getApplicationTimeline,
   getCandidateTimeline,
   getCandidate,
@@ -32,6 +33,7 @@ import {
   type ListCandidatesParams,
   type ScheduleInterviewInput,
   type RecordInterviewFeedbackInput,
+  type ApplicationWithRelations,
 } from './recruitment-api';
 import type { ApplicationAiAssessment, InterviewPrepQuestion, OverrideAssessmentInput } from './ai-matching-schema';
 import type { ApplicationStage, VacancyStatus } from '@/types/database';
@@ -41,6 +43,8 @@ const keys = {
   vacancies: (p: ListVacanciesParams) => ['recruitment', 'vacancies', p] as const,
   vacancy: (id: string) => ['recruitment', 'vacancy', id] as const,
   applications: (vacancyId: string) => ['recruitment', 'applications', vacancyId] as const,
+  applicationDocuments: (vacancyId: string, count: number, expiresInSeconds: number) =>
+    ['recruitment', 'application-documents', vacancyId, count, expiresInSeconds] as const,
   talentPoolMatches: (vacancyId: string) => ['recruitment', 'talent-matches', vacancyId] as const,
   timeline: (id: string) => ['recruitment', 'timeline', id] as const,
   candidateTimeline: (id: string) => ['recruitment', 'candidate-timeline', id] as const,
@@ -74,6 +78,20 @@ export function useApplications(vacancyId: string) {
     queryKey: keys.applications(vacancyId),
     queryFn: () => listApplications(vacancyId),
     enabled: Boolean(vacancyId),
+  });
+}
+
+export function useApplicationDocuments(
+  vacancyId: string,
+  applications: ApplicationWithRelations[] | undefined,
+  expiresInSeconds = 14 * 24 * 60 * 60,
+) {
+  const count = applications?.length ?? 0;
+  return useQuery({
+    queryKey: keys.applicationDocuments(vacancyId, count, expiresInSeconds),
+    queryFn: () => resolveApplicationDocumentUrls(applications ?? [], expiresInSeconds),
+    enabled: Boolean(vacancyId) && count > 0,
+    staleTime: Math.min(expiresInSeconds * 500, 30 * 60_000),
   });
 }
 

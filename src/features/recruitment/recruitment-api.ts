@@ -18,6 +18,7 @@ import type {
 import {
   applyHumanAssessmentOverride,
   applicationAiAssessmentSchema,
+  parseApplicationNotes,
   type ApplicationAiAssessment,
   type InterviewPrepQuestion,
   type OverrideAssessmentInput,
@@ -395,17 +396,179 @@ export interface ApplicationWithRelations extends ApplicationRow {
       > & {
         cv_file_id?: string | null;
         cv_parsed?: unknown;
+        work_history?: unknown[];
+        education?: unknown[];
       })
     | null;
-  candidateContact: Pick<ContactRow, 'id' | 'full_name' | 'email' | 'phone_e164'> | null;
+  candidateContact:
+    | (Pick<ContactRow, 'id' | 'full_name' | 'email' | 'phone_e164'> & {
+        location?: string | null;
+      })
+    | null;
 }
 
 const APPLICATION_SELECT = `
   *,
   vacancy:vacancies!applications_vacancy_id_fkey ( id, title, slug, status ),
-  candidate:candidates!applications_candidate_id_fkey ( id, headline, skills, rating, years_experience, salary_expectation_ugx, availability, cv_file_id, cv_parsed ),
-  candidateContact:candidates!applications_candidate_id_fkey ( contact:contacts!candidates_contact_id_fkey ( id, full_name, email, phone_e164 ) )
+  candidate:candidates!applications_candidate_id_fkey ( id, headline, skills, rating, years_experience, salary_expectation_ugx, availability, cv_file_id, cv_parsed, work_history, education ),
+  candidateContact:candidates!applications_candidate_id_fkey ( contact:contacts!candidates_contact_id_fkey ( id, full_name, email, phone_e164, location ) )
 `;
+
+export interface ResolvedDocumentLink {
+  url: string;
+  path: string;
+  filename: string;
+  mime: string;
+  isPdf: boolean;
+}
+
+export interface ResolvedApplicationDocuments {
+  cvByCandidateId: Record<string, ResolvedDocumentLink>;
+  coverByApplicationId: Record<string, ResolvedDocumentLink>;
+}
+
+function isPdfFilename(filenameOrPath: string, mime?: string | null): boolean {
+  if (mime && mime.toLowerCase().includes('pdf')) return true;
+  return filenameOrPath.toLowerCase().endsWith('.pdf');
+}
+
+function guessMimeFromPath(path: string, explicitMime?: string | null): string {
+  if (explicitMime && explicitMime.trim()) return explicitMime.trim();
+  const lower = path.toLowerCase();
+  if (lower.endsWith('.pdf')) return 'application/pdf';
+  if (lower.endsWith('.doc')) return 'application/msword';
+  if (lower.endsWith('.docx')) {
+    return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  }
+  return 'application/octet-stream';
+}
+
+/**
+ * Batch-resolves signed download URLs for all candidate CVs and uploaded
+ * cover letters across a vacancy's applications in minimal round trips.
+ */
+export async function resolveApplicationDocumentUrls(
+  applications: ApplicationWithRelations[],
+  expiresInSeconds = 14 * 24 * 60 * 60,
+): Promise<ResolvedApplicationDocuments> {
+  const cvByCandidateId: Record<string, ResolvedDocumentLink> = {};
+  const coverByApplicationId: Record<string, ResolvedDocumentLink> = {};
+  if (applications.length === 0) return { cvByCandidateId, coverByApplicationId };
+
+  const supabase = getSupabase();
+
+  const cvFileIds = Array.from(
+    new Set(
+      applications
+        .map((a) => a.candidate?.cv_file_id)
+        .filter((id): id is string => typeof id === 'string' && id.trim().length > 0),
+    ),
+  );
+
+  const fileMetaById = new Map<string, { bucket: string; path: string; filename: string; mime: string }>();
+  if (cvFileIds.length > 0) {
+    const chunkSize = 100;
+    for (let i = 0; i < cvFileIds.length; i += chunkSize) {
+      const slice = cvFileIds.slice(i, i + chunkSize);
+      const { data, error } = await supabase
+        .from('candidate_files')
+        .select('id, bucket, path, filename, mime')
+        .in('id', slice);
+      if (error) throw error;
+      for (const row of data ?? []) {
+        fileMetaById.set(row.id, {
+          bucket: row.bucket || 'candidates',
+          path: row.path,
+          filename: row.filename,
+          mime: row.mime,
+        });
+      }
+    }
+  }
+
+  const pathsByBucket = new Map<string, Set<string>>();
+  const addPath = (bucket: string, path: string) => {
+    let set = pathsByBucket.get(bucket);
+    if (!set) {
+      set = new Set<string>();
+      pathsByBucket.set(bucket, set);
+    }
+    set.add(path);
+  };
+
+  for (const app of applications) {
+    const cvFileId = app.candidate?.cv_file_id;
+    if (cvFileId) {
+      const meta = fileMetaById.get(cvFileId);
+      if (meta?.path) addPath(meta.bucket, meta.path);
+    }
+    const parsedNotes = parseApplicationNotes(app.notes);
+    if (parsedNotes.coverLetterPath) {
+      addPath('candidates', parsedNotes.coverLetterPath);
+    }
+  }
+
+  const signedByBucketAndPath = new Map<string, string>();
+  for (const [bucket, pathSet] of pathsByBucket.entries()) {
+    const allPaths = Array.from(pathSet);
+    const chunkSize = 100;
+    for (let i = 0; i < allPaths.length; i += chunkSize) {
+      const chunk = allPaths.slice(i, i + chunkSize);
+      const { data, error } = await supabase.storage
+        .from(bucket)
+        .createSignedUrls(chunk, expiresInSeconds);
+      if (error) throw error;
+      for (const item of data ?? []) {
+        if (item.path && item.signedUrl) {
+          signedByBucketAndPath.set(`${bucket}::${item.path}`, item.signedUrl);
+        }
+      }
+    }
+  }
+
+  for (const app of applications) {
+    const candId = app.candidate?.id ?? app.candidate_id;
+    const cvFileId = app.candidate?.cv_file_id;
+    if (candId && cvFileId) {
+      const meta = fileMetaById.get(cvFileId);
+      if (meta?.path) {
+        const signedUrl = signedByBucketAndPath.get(`${meta.bucket}::${meta.path}`);
+        if (signedUrl) {
+          const filename = meta.filename || meta.path.split('/').pop() || 'CV';
+          const mime = guessMimeFromPath(meta.path, meta.mime);
+          cvByCandidateId[candId] = {
+            url: signedUrl,
+            path: meta.path,
+            filename,
+            mime,
+            isPdf: isPdfFilename(filename, mime),
+          };
+        }
+      }
+    }
+
+    const parsedNotes = parseApplicationNotes(app.notes);
+    if (parsedNotes.coverLetterPath) {
+      const signedUrl = signedByBucketAndPath.get(`candidates::${parsedNotes.coverLetterPath}`);
+      if (signedUrl) {
+        const filename =
+          parsedNotes.coverLetterFilename ||
+          parsedNotes.coverLetterPath.split('/').pop() ||
+          'Cover_Letter';
+        const mime = guessMimeFromPath(parsedNotes.coverLetterPath);
+        coverByApplicationId[app.id] = {
+          url: signedUrl,
+          path: parsedNotes.coverLetterPath,
+          filename,
+          mime,
+          isPdf: isPdfFilename(filename, mime),
+        };
+      }
+    }
+  }
+
+  return { cvByCandidateId, coverByApplicationId };
+}
 
 export interface ListApplicationsResult {
   rows: ApplicationWithRelations[];

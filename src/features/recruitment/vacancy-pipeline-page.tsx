@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router';
-import { ArrowLeft, FileText, Pencil, X, LayoutGrid, List, Sparkles, Plus, Star, Scale, Mail } from 'lucide-react';
+import { ArrowLeft, FileText, Pencil, X, LayoutGrid, List, Sparkles, Plus, Star, Scale, Mail, Filter } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/cn';
 import { PageHeader } from '@/components/page-header';
@@ -20,6 +20,7 @@ import {
   useEvaluateApplication,
 } from './use-recruitment';
 import { ApplicationBoard } from './application-board';
+import { ApplicantSiftView } from './applicant-sift-view';
 import { CandidateCompareMatrix } from './candidate-compare-matrix';
 import { CandidateDetailSheet } from './candidate-detail-sheet';
 import { VacancyEditorSheet } from './vacancy-editor-sheet';
@@ -38,13 +39,13 @@ export function VacancyPipelinePage() {
   const { vacancyId } = useParams<{ vacancyId: string }>();
   const navigate = useNavigate();
   const { data: vacancy, isLoading } = useVacancy(vacancyId ?? '');
-  const { data: applications } = useApplications(vacancyId ?? '');
+  const { data: applications, isLoading: applicationsLoading } = useApplications(vacancyId ?? '');
   const { data: poolMatches } = useTalentPoolMatches(vacancyId ?? '');
   const publish = usePublishVacancy(vacancyId ?? '');
   const close = useCloseVacancy(vacancyId ?? '');
   const [editorOpen, setEditorOpen] = useState(false);
   const [openCandidateId, setOpenCandidateId] = useState<string | null>(null);
-  const [view, setView] = useState<'board' | 'table' | 'compare' | 'matches'>('board');
+  const [view, setView] = useState<'sift' | 'board' | 'table' | 'compare' | 'matches'>('sift');
   const [sortBy, setSortBy] = useState<'match' | 'newest'>('match');
   const [stageFilter, setStageFilter] = useState<ApplicationStage | 'all'>('all');
   const [searchParams] = useSearchParams();
@@ -75,6 +76,10 @@ export function VacancyPipelinePage() {
 
   const actions = (
     <>
+      <Button onClick={() => void navigate(`/recruitment/${vacancy.id}/sift-report`)} variant="secondary">
+        <FileText className="mr-1.5 h-4 w-4 text-primary" />
+        Sift report
+      </Button>
       <Button onClick={() => void navigate(`/recruitment/${vacancy.id}/shortlist`)} variant="ghost">
         <FileText className="mr-1.5 h-4 w-4" />
         Shortlist pack
@@ -163,6 +168,17 @@ export function VacancyPipelinePage() {
           <button
             className={cn(
               'inline-flex items-center gap-1.5 rounded-control px-2.5 py-1 text-sm transition-colors',
+              view === 'sift' ? 'bg-surface-sunken text-ink font-medium' : 'text-ink-secondary',
+            )}
+            onClick={() => setView('sift')}
+            type="button"
+          >
+            <Filter className="h-3.5 w-3.5 text-primary" />
+            AI Sift
+          </button>
+          <button
+            className={cn(
+              'inline-flex items-center gap-1.5 rounded-control px-2.5 py-1 text-sm transition-colors',
               view === 'board' ? 'bg-surface-sunken text-ink font-medium' : 'text-ink-secondary',
             )}
             onClick={() => setView('board')}
@@ -243,6 +259,16 @@ export function VacancyPipelinePage() {
           )}
         </div>
       </div>
+
+      {view === 'sift' && (
+        <ApplicantSiftView
+          applications={applications}
+          isLoading={applicationsLoading}
+          onOpenApplication={openApplication}
+          vacancy={vacancy}
+          vacancyId={vacancy.id}
+        />
+      )}
 
       {view === 'board' && (
         <ApplicationBoard

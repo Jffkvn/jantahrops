@@ -17,6 +17,7 @@ import { VacancyPipelinePage } from '@/features/recruitment/vacancy-pipeline-pag
 import { ApplicationReviewPage } from '@/features/recruitment/application-detail-sheet';
 import { TalentPoolPage } from '@/features/recruitment/talent-pool-page';
 import { ShortlistPrintView } from '@/features/recruitment/shortlist-print-view';
+import { SiftReportPrintView } from '@/features/recruitment/sift-report-print-view';
 import { ContactsPage } from '@/features/directory/contacts-page';
 import { OrganisationsPage } from '@/features/directory/organisations-page';
 import { TasksPage } from '@/features/tasks/tasks-page';
@@ -52,6 +53,16 @@ export const router = createBrowserRouter([
     element: (
       <ProtectedRoute>
         <ShortlistPrintView />
+      </ProtectedRoute>
+    ),
+  },
+
+  // Recruitment executive AI sift report — rendered WITHOUT the app shell for clean PDF export.
+  {
+    path: '/recruitment/:vacancyId/sift-report',
+    element: (
+      <ProtectedRoute>
+        <SiftReportPrintView />
       </ProtectedRoute>
     ),
   },
