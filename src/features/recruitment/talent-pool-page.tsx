@@ -16,7 +16,11 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { formatUGX } from '@/lib/format';
 import { formatPhoneDisplay } from '@/lib/phone';
-import { AVAILABILITY_LABELS } from './recruitment-meta';
+import {
+  AVAILABILITY_LABELS,
+  assignableVacancies,
+  formatAssignableVacancyLabel,
+} from './recruitment-meta';
 import {
   useCandidatesList,
   useCreateApplication,
@@ -52,7 +56,11 @@ export function TalentPoolPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
   const { data: skillsData } = useDistinctSkills();
-  const { data: vacanciesData } = useVacanciesList({ status: 'open', pageSize: 100 });
+  const {
+    data: vacanciesData,
+    isLoading: vacanciesLoading,
+    isError: vacanciesError,
+  } = useVacanciesList({ status: 'all', pageSize: 100 });
   const createApplication = useCreateApplication();
 
   useEffect(() => {
@@ -78,7 +86,10 @@ export function TalentPoolPage() {
   const candidates = data?.rows ?? [];
   const total = data?.total ?? 0;
   const pageCount = Math.ceil(total / PAGE_SIZE);
-  const openVacancies = vacanciesData?.rows ?? [];
+  const vacancies = useMemo(
+    () => assignableVacancies(vacanciesData?.rows ?? []),
+    [vacanciesData],
+  );
 
   const skillOptions = useMemo(() => {
     const set = new Set(skills);
@@ -88,10 +99,14 @@ export function TalentPoolPage() {
 
   const addToVacancy = async (candidateId: string) => {
     if (!vacancyId) return;
-    const result = await createApplication.mutateAsync({ vacancyId, candidateId });
-    if (result === null) toast.info('Already applied to this vacancy');
-    else toast.success('Added to vacancy');
-    setAddTarget(null);
+    try {
+      const result = await createApplication.mutateAsync({ vacancyId, candidateId });
+      if (result === null) toast.info('Already applied to this vacancy');
+      else toast.success('Added to vacancy');
+      setAddTarget(null);
+    } catch {
+      toast.error('Could not add candidate to vacancy');
+    }
   };
 
   return (
@@ -152,15 +167,27 @@ export function TalentPoolPage() {
         </div>
 
         <Select onValueChange={setVacancyId} value={vacancyId}>
-          <SelectTrigger className="w-[200px]">
+          <SelectTrigger aria-label="Add to vacancy" className="w-[200px]">
             <SelectValue placeholder="Add to vacancy…" />
           </SelectTrigger>
           <SelectContent>
-            {openVacancies.map((v) => (
-              <SelectItem key={v.id} value={v.id}>
-                {v.title}
-              </SelectItem>
-            ))}
+            {vacanciesLoading ? (
+              <div className="px-2 py-3 text-center text-xs text-ink-muted">Loading vacancies…</div>
+            ) : vacanciesError ? (
+              <div className="px-2 py-3 text-center text-xs text-danger">
+                Could not load vacancies.
+              </div>
+            ) : vacancies.length === 0 ? (
+              <div className="px-2 py-3 text-center text-xs text-ink-muted">
+                No open or draft vacancies available.
+              </div>
+            ) : (
+              vacancies.map((v) => (
+                <SelectItem key={v.id} value={v.id}>
+                  {formatAssignableVacancyLabel(v)}
+                </SelectItem>
+              ))
+            )}
           </SelectContent>
         </Select>
       </div>
@@ -204,6 +231,7 @@ export function TalentPoolPage() {
                 key={candidate.id}
                 onAdd={() => setAddTarget(candidate.id)}
                 onAddToVacancy={() => void addToVacancy(candidate.id)}
+                onCancel={() => setAddTarget(null)}
                 onOpen={() => setOpenCandidateId(candidate.id)}
                 vacancyId={vacancyId}
               />
@@ -257,6 +285,7 @@ function CandidateRow({
   addTarget,
   onAdd,
   onAddToVacancy,
+  onCancel,
   onOpen,
 }: {
   candidate: CandidateWithRelations;
@@ -264,6 +293,7 @@ function CandidateRow({
   addTarget: string | null;
   onAdd: () => void;
   onAddToVacancy: () => void;
+  onCancel: () => void;
   onOpen: () => void;
 }) {
   const contact = candidate.contact;
@@ -346,19 +376,23 @@ function CandidateRow({
                   <Plus className="mr-1 h-3.5 w-3.5" />
                   Confirm
                 </Button>
-                <Button onClick={onAdd} size="sm" variant="ghost">
+                <Button onClick={onCancel} size="sm" variant="ghost">
                   Cancel
                 </Button>
               </>
             ) : (
-              <Button onClick={onAdd} size="sm" variant="ghost">
+              <Button onClick={onCancel} size="sm" variant="ghost">
                 Close
               </Button>
             )}
           </div>
         ) : (
           <Button
-            className="opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100"
+            className={
+              vacancyId
+                ? 'opacity-100 transition-opacity'
+                : 'opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100'
+            }
             disabled={!vacancyId}
             onClick={onAdd}
             size="sm"

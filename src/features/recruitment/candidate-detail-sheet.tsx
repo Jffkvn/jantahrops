@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Phone, Mail, MessageCircle, FileText, ChevronRight, Star, UserX, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
@@ -10,7 +10,12 @@ import { formatDateTime, formatUGX, formatRelative } from '@/lib/format';
 import { parseCvData } from './ai-matching-schema';
 import { MatchBadge } from './match-badge';
 import { cvSignedUrl } from './recruitment-api';
-import { AVAILABILITY_LABELS, stageMeta } from './recruitment-meta';
+import {
+  AVAILABILITY_LABELS,
+  assignableVacancies,
+  formatAssignableVacancyLabel,
+  stageMeta,
+} from './recruitment-meta';
 import {
   useCandidate,
   useCandidateApplications,
@@ -63,12 +68,21 @@ function CandidateDetailBody({
   const { data: candidate, isLoading } = useCandidate(candidateId);
   const { data: applications } = useCandidateApplications(candidateId);
   const { data: timeline } = useCandidateTimeline(candidateId);
-  const { data: vacanciesData } = useVacanciesList({ status: 'open', pageSize: 100 });
+  const {
+    data: vacanciesData,
+    isLoading: vacanciesLoading,
+    isError: vacanciesError,
+  } = useVacanciesList({ status: 'all', pageSize: 100 });
   const createApplication = useCreateApplication();
   const updateCandidate = useUpdateCandidate(candidateId);
   const parseCv = useParseCandidateCv(candidateId);
   const [vacancyId, setVacancyId] = useState('');
   const [eraseOpen, setEraseOpen] = useState(false);
+
+  const vacancies = useMemo(
+    () => assignableVacancies(vacanciesData?.rows ?? []),
+    [vacanciesData],
+  );
 
   if (isLoading || !candidate) {
     return (
@@ -81,7 +95,6 @@ function CandidateDetailBody({
   }
 
   const contact = candidate.contact;
-  const openVacancies = vacanciesData?.rows ?? [];
   const cvParsed = parseCvData(candidate.cv_parsed);
 
   const downloadCv = async () => {
@@ -101,9 +114,17 @@ function CandidateDetailBody({
 
   const addToVacancy = async () => {
     if (!vacancyId) return;
-    const result = await createApplication.mutateAsync({ vacancyId, candidateId: candidate.id });
-    if (result === null) toast.info('Already applied to this vacancy');
-    else toast.success('Added to vacancy');
+    try {
+      const result = await createApplication.mutateAsync({ vacancyId, candidateId: candidate.id });
+      if (result === null) {
+        toast.info('Already applied to this vacancy');
+      } else {
+        toast.success('Added to vacancy');
+        setVacancyId('');
+      }
+    } catch {
+      toast.error('Could not add candidate to vacancy');
+    }
   };
 
   return (
@@ -283,15 +304,29 @@ function CandidateDetailBody({
             </label>
             <div className="flex gap-2">
               <Select onValueChange={setVacancyId} value={vacancyId}>
-                <SelectTrigger className="flex-1">
-                  <SelectValue placeholder="Choose an open vacancy" />
+                <SelectTrigger aria-label="Choose a vacancy" className="flex-1">
+                  <SelectValue placeholder="Choose a vacancy" />
                 </SelectTrigger>
                 <SelectContent>
-                  {openVacancies.map((v) => (
-                    <SelectItem key={v.id} value={v.id}>
-                      {v.title}
-                    </SelectItem>
-                  ))}
+                  {vacanciesLoading ? (
+                    <div className="text-ink-muted px-2 py-3 text-center text-xs">
+                      Loading vacancies…
+                    </div>
+                  ) : vacanciesError ? (
+                    <div className="text-danger px-2 py-3 text-center text-xs">
+                      Could not load vacancies.
+                    </div>
+                  ) : vacancies.length === 0 ? (
+                    <div className="text-ink-muted px-2 py-3 text-center text-xs">
+                      No open or draft vacancies available.
+                    </div>
+                  ) : (
+                    vacancies.map((v) => (
+                      <SelectItem key={v.id} value={v.id}>
+                        {formatAssignableVacancyLabel(v)}
+                      </SelectItem>
+                    ))
+                  )}
                 </SelectContent>
               </Select>
               <Button

@@ -58,6 +58,35 @@ export const VACANCY_STATUS_TONES: Record<VacancyStatus, 'neutral' | 'success' |
   closed: 'danger',
 };
 
+const ASSIGNABLE_VACANCY_RANK: Partial<Record<VacancyStatus, number>> = {
+  open: 0,
+  draft: 1,
+  paused: 2,
+};
+
+/** Filters out closed vacancies and orders open, then draft, then paused. */
+export function assignableVacancies<T extends { status: VacancyStatus }>(vacancies: readonly T[]): T[] {
+  return vacancies
+    .filter((v) => v.status !== 'closed')
+    .map((vacancy, index) => ({ vacancy, index }))
+    .sort((a, b) => {
+      const rankDiff =
+        (ASSIGNABLE_VACANCY_RANK[a.vacancy.status] ?? 99) -
+        (ASSIGNABLE_VACANCY_RANK[b.vacancy.status] ?? 99);
+      return rankDiff !== 0 ? rankDiff : a.index - b.index;
+    })
+    .map(({ vacancy }) => vacancy);
+}
+
+/** Formats a vacancy label for assignment dropdowns, tagging non-open statuses. */
+export function formatAssignableVacancyLabel(vacancy: {
+  title: string;
+  status: VacancyStatus;
+}): string {
+  if (vacancy.status === 'open') return vacancy.title;
+  return `${vacancy.title} (${VACANCY_STATUS_LABELS[vacancy.status]})`;
+}
+
 export const AVAILABILITY_LABELS: Record<AvailabilityStatus, string> = {
   immediate: 'Immediate',
   one_month: '1 month',
