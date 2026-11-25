@@ -51,6 +51,69 @@ export async function listAllProfiles(): Promise<ProfileRow[]> {
   return data ?? [];
 }
 
+export interface CreateTeamMemberInput {
+  fullName: string;
+  email: string;
+  role: UserRole;
+  password?: string | undefined;
+  sendWelcomeEmail?: boolean | undefined;
+}
+
+export interface CreateTeamMemberResult {
+  user: ProfileRow;
+  temporaryPassword: string;
+  loginUrl: string;
+  emailSent: boolean;
+}
+
+type AdminCreateUserResponse = {
+  ok?: boolean;
+  error?: string;
+  user?: ProfileRow;
+  temporaryPassword?: string;
+  loginUrl?: string;
+  emailSent?: boolean;
+};
+
+export async function createTeamMember(
+  input: CreateTeamMemberInput,
+): Promise<CreateTeamMemberResult> {
+  const db = getSupabase();
+  const res = await db.functions.invoke<AdminCreateUserResponse>('admin-create-user', {
+    body: input,
+  });
+
+  if (res.error) {
+    let serverMsg: string | undefined;
+    const ctx = (res.error as { context?: Response }).context;
+    if (ctx && typeof ctx.json === 'function') {
+      try {
+        const body = (await ctx.json()) as { error?: unknown };
+        if (typeof body?.error === 'string' && body.error.trim()) {
+          serverMsg = body.error.trim();
+        }
+      } catch {
+        // Ignore unparseable error context
+      }
+    }
+    const fallbackMsg =
+      res.error instanceof Error && res.error.message ? res.error.message : undefined;
+    throw new Error(serverMsg || fallbackMsg || 'Could not create the user account.');
+  }
+
+  const payload = res.data;
+  if (!payload?.ok || !payload.user || !payload.temporaryPassword || !payload.loginUrl) {
+    throw new Error(payload?.error ?? 'Could not create the user account.');
+  }
+
+  return {
+    user: payload.user,
+    temporaryPassword: payload.temporaryPassword,
+    loginUrl: payload.loginUrl,
+    emailSent: Boolean(payload.emailSent),
+  };
+}
+
 export async function updateTeamMember(
   id: string,
   patch: { role?: UserRole; is_active?: boolean; full_name?: string },

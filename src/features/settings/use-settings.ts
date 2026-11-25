@@ -2,8 +2,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   updateCompanyProfile,
   listAllProfiles,
+  createTeamMember,
   updateTeamMember,
   type CompanyProfileInput,
+  type CreateTeamMemberInput,
 } from './settings-api';
 import type { UserRole } from '@/types/database';
 
@@ -21,6 +23,17 @@ export function useUpdateCompanyProfile() {
       // The internal day rate lives here too, and every project's estimated
       // profit is computed from it.
       void qc.invalidateQueries({ queryKey: ['projects'] });
+    },
+  });
+}
+
+export function useCreateTeamMember() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreateTeamMemberInput) => createTeamMember(input),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['settings', 'profiles'] });
+      void qc.invalidateQueries({ queryKey: ['team'] });
     },
   });
 }

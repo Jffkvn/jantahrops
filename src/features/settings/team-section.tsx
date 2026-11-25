@@ -1,5 +1,7 @@
-import { Lock, ShieldCheck } from 'lucide-react';
+import { useState } from 'react';
+import { Lock, ShieldCheck, UserPlus } from 'lucide-react';
 import { toast } from 'sonner';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import {
@@ -11,6 +13,7 @@ import {
 } from '@/components/ui/select';
 import { formatDate } from '@/lib/format';
 import { useAuth } from '@/features/auth/auth-provider';
+import { CreateTeamMemberSheet } from './create-team-member-sheet';
 import { useAllProfiles, useUpdateTeamMember } from './use-settings';
 import type { ProfileRow, UserRole } from '@/types/database';
 
@@ -37,6 +40,7 @@ export function TeamSection() {
   const { isAdmin, profile } = useAuth();
   const { data: people, isLoading } = useAllProfiles();
   const update = useUpdateTeamMember();
+  const [createOpen, setCreateOpen] = useState(false);
 
   const admins = (people ?? []).filter((p) => p.role === 'admin' && p.is_active);
 
@@ -65,6 +69,18 @@ export function TeamSection() {
 
   return (
     <div className="space-y-4">
+      {isAdmin && (
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-sm text-ink-secondary">
+            Team members with access to JantaHR Ops.
+          </p>
+          <Button onClick={() => setCreateOpen(true)} size="sm" variant="primary">
+            <UserPlus className="mr-1.5 h-4 w-4" />
+            Add user
+          </Button>
+        </div>
+      )}
+
       {!isAdmin && (
         <div className="flex items-start gap-2 rounded-card border border-border bg-surface-sunken/60 px-4 py-3 text-sm text-ink-secondary">
           <Lock className="mt-0.5 h-4 w-4 shrink-0" />
@@ -170,8 +186,10 @@ export function TeamSection() {
       <p className="text-xs text-ink-muted">
         Deactivating keeps everything a person owns — their leads, documents and tasks stay
         exactly where they are. They simply stop appearing in owner and assignee pickers.
-        New colleagues join by signing up; their profile appears here automatically.
+        Admins can add new user accounts directly from this page.
       </p>
+
+      <CreateTeamMemberSheet onOpenChange={setCreateOpen} open={createOpen} />
     </div>
   );
 }
