@@ -25,6 +25,15 @@ vi.mock('@/features/auth/auth-provider', () => ({
   useAuth: () => ({ isAdmin: false }),
 }));
 
+vi.mock('./recruitment-api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./recruitment-api')>();
+  return {
+    ...actual,
+    uploadCandidateCvFile: vi.fn(),
+    extractCvProfile: vi.fn(),
+  };
+});
+
 vi.mock('./use-recruitment', () => ({
   useCandidatesList: vi.fn(() => ({ data: { rows: [], total: 0 }, isLoading: false })),
   useCandidate: vi.fn(() => ({ data: null, isLoading: false })),
@@ -44,11 +53,14 @@ import {
   useCandidatesList,
   useVacanciesList,
 } from './use-recruitment';
+import { extractCvProfile, uploadCandidateCvFile } from './recruitment-api';
 
 const mockedList = vi.mocked(useCandidatesList);
 const mockedCandidate = vi.mocked(useCandidate);
 const mockedVacanciesList = vi.mocked(useVacanciesList);
 const mockedAddContactToVacancy = vi.mocked(useAddContactToVacancy);
+const mockedUploadCv = vi.mocked(uploadCandidateCvFile);
+const mockedExtractCv = vi.mocked(extractCvProfile);
 
 function makeVacancy(id: string, title: string, status: VacancyStatus): VacancyWithRelations {
   return {
@@ -373,6 +385,59 @@ describe('CreateCandidateSheet vacancy & email-application support', () => {
     await user.click(vacancyTrigger);
     expect(await screen.findByRole('option', { name: 'HR Assistant (Closed)' })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: 'HR Manager' })).toBeInTheDocument();
+  });
+
+  it('auto-fills blank fields when a CV is attached without overwriting manual entries', async () => {
+    const user = userEvent.setup();
+    mockedVacanciesList.mockReturnValue({
+      data: {
+        rows: [makeVacancy('v-closed', 'HR Assistant', 'closed')],
+        total: 1,
+      },
+      isLoading: false,
+      isError: false,
+    } as unknown as ReturnType<typeof useVacanciesList>);
+    mockedUploadCv.mockResolvedValue('file-123');
+    mockedExtractCv.mockResolvedValue({
+      readability: 'clear',
+      readability_note: null,
+      full_name: 'Jessica Nakong',
+      email: 'jessicanakong2@gmail.com',
+      phone: '+256772123456',
+      location: 'Kampala',
+      headline: 'HR Assistant · Human Resource Management',
+      skills: ['Microsoft Excel', 'HR Records', 'Payroll Support'],
+      years_experience: 2,
+      summary: 'HR graduate with 2 years experience.',
+    });
+
+    renderWithProviders(
+      <CreateCandidateSheet defaultVacancyId="v-closed" onOpenChange={() => {}} open />,
+    );
+
+    // Pre-fill full name manually to verify auto-fill preserves user edits.
+    const nameInput = await screen.findByPlaceholderText('Sarah Nakato');
+    await user.type(nameInput, 'Custom Name');
+
+    const fileInput = document.querySelector('#create-candidate-cv-input') as HTMLInputElement;
+    const pdfFile = new File(['%PDF-1.4'], 'jessica-cv.pdf', { type: 'application/pdf' });
+    fireEvent.change(fileInput, { target: { files: [pdfFile] } });
+
+    await waitFor(() => {
+      expect(mockedUploadCv).toHaveBeenCalledWith(pdfFile);
+      expect(mockedExtractCv).toHaveBeenCalledWith('file-123');
+    });
+
+    expect(await screen.findByText(/Auto-filled 4 fields from CV/i)).toBeInTheDocument();
+    expect(nameInput).toHaveValue('Custom Name');
+    expect(screen.getByPlaceholderText('sarah@acme.ug')).toHaveValue('jessicanakong2@gmail.com');
+    expect(screen.getByPlaceholderText('0772 123 456')).toHaveValue('+256 772 123 456');
+    expect(screen.getByPlaceholderText('HR Assistant / Administrative Officer')).toHaveValue(
+      'HR Assistant · Human Resource Management',
+    );
+    expect(screen.getByPlaceholderText('Microsoft Excel, HR Records, Payroll Support')).toHaveValue(
+      'Microsoft Excel, HR Records, Payroll Support',
+    );
   });
 });
 

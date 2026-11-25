@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Loader2, Paperclip, X } from 'lucide-react';
+import { CheckCircle2, Loader2, Paperclip, Sparkles, Upload, X } from 'lucide-react';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -23,11 +23,12 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { getSupabase } from '@/lib/supabase';
-import { normalizeUgandanPhone } from '@/lib/phone';
+import { formatPhoneDisplay, normalizeUgandanPhone } from '@/lib/phone';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   createApplication,
   evaluateApplicationWithAi,
+  extractCvProfile,
   uploadCandidateCvFile,
 } from './recruitment-api';
 import { assignableVacancies, formatAssignableVacancyLabel } from './recruitment-meta';
@@ -66,7 +67,18 @@ export function CreateCandidateSheet({
   const qc = useQueryClient();
   const [serverError, setServerError] = useState<string | null>(null);
   const [cvFile, setCvFile] = useState<File | null>(null);
+  const [uploadedCvFileId, setUploadedCvFileId] = useState<string | null>(null);
+  const [isParsingCv, setIsParsingCv] = useState(false);
+  const [cvParseStatus, setCvParseStatus] = useState<{
+    tone: 'success' | 'warning';
+    message: string;
+  } | null>(null);
+  const [extractedMeta, setExtractedMeta] = useState<{
+    location: string | null;
+    yearsExperience: number | null;
+  }>({ location: null, yearsExperience: null });
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const parseRequestIdRef = useRef(0);
 
   const {
     data: vacanciesData,
@@ -85,6 +97,8 @@ export function CreateCandidateSheet({
     register,
     control,
     watch,
+    getValues,
+    setValue,
     handleSubmit,
     reset,
     formState: { errors, isSubmitting },
@@ -107,6 +121,7 @@ export function CreateCandidateSheet({
 
   useEffect(() => {
     if (open) {
+      parseRequestIdRef.current += 1;
       reset({
         fullName: '',
         email: '',
@@ -118,10 +133,114 @@ export function CreateCandidateSheet({
         source: 'email',
       });
       setCvFile(null);
+      setUploadedCvFileId(null);
+      setIsParsingCv(false);
+      setCvParseStatus(null);
+      setExtractedMeta({ location: null, yearsExperience: null });
       setServerError(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   }, [open, defaultVacancyId, reset]);
+
+  const handleCvSelected = async (file: File | null) => {
+    parseRequestIdRef.current += 1;
+    const reqId = parseRequestIdRef.current;
+
+    setCvFile(file);
+    setUploadedCvFileId(null);
+    setCvParseStatus(null);
+    setExtractedMeta({ location: null, yearsExperience: null });
+    setServerError(null);
+
+    if (!file) {
+      setIsParsingCv(false);
+      return;
+    }
+
+    setIsParsingCv(true);
+    try {
+      const fileId = await uploadCandidateCvFile(file);
+      if (parseRequestIdRef.current !== reqId) return;
+      setUploadedCvFileId(fileId);
+
+      try {
+        const profile = await extractCvProfile(fileId);
+        if (parseRequestIdRef.current !== reqId) return;
+
+        if (profile.readability === 'unreadable') {
+          setCvParseStatus({
+            tone: 'warning',
+            message:
+              profile.readability_note ||
+              'CV attached, but could not be read automatically. Please fill in the details below.',
+          });
+          return;
+        }
+
+        const current = getValues();
+        let filledCount = 0;
+
+        if (!current.fullName.trim() && profile.full_name) {
+          setValue('fullName', profile.full_name, { shouldDirty: true, shouldValidate: true });
+          filledCount += 1;
+        }
+        if (!current.email.trim() && profile.email) {
+          setValue('email', profile.email, { shouldDirty: true, shouldValidate: true });
+          filledCount += 1;
+        }
+        if (!current.phone.trim() && profile.phone) {
+          const normalized = normalizeUgandanPhone(profile.phone);
+          if (normalized) {
+            setValue('phone', formatPhoneDisplay(normalized), {
+              shouldDirty: true,
+              shouldValidate: true,
+            });
+            filledCount += 1;
+          }
+        }
+        if (!current.headline.trim() && profile.headline) {
+          setValue('headline', profile.headline, { shouldDirty: true });
+          filledCount += 1;
+        }
+        if (!current.skills.trim() && profile.skills.length > 0) {
+          setValue('skills', profile.skills.join(', '), { shouldDirty: true });
+          filledCount += 1;
+        }
+
+        setExtractedMeta({
+          location: profile.location,
+          yearsExperience: profile.years_experience,
+        });
+
+        setCvParseStatus(
+          filledCount > 0
+            ? {
+                tone: 'success',
+                message: `Auto-filled ${filledCount} field${filledCount === 1 ? '' : 's'} from CV — review before saving.`,
+              }
+            : {
+                tone: 'success',
+                message: 'CV attached and read. Your existing entries were kept.',
+              },
+        );
+      } catch {
+        if (parseRequestIdRef.current !== reqId) return;
+        setCvParseStatus({
+          tone: 'warning',
+          message: 'CV attached, but auto-fill could not read it right now. You can fill in the fields below.',
+        });
+      }
+    } catch (e) {
+      if (parseRequestIdRef.current !== reqId) return;
+      setCvFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      setServerError(e instanceof Error && e.message ? e.message : 'Could not upload the CV file.');
+    } finally {
+      if (parseRequestIdRef.current === reqId) {
+        setIsParsingCv(false);
+      }
+    }
+  };
 
   const onSubmit = async (values: FormValues) => {
     setServerError(null);
@@ -132,8 +251,8 @@ export function CreateCandidateSheet({
       const targetVacancyId =
         values.vacancyId && values.vacancyId !== NO_VACANCY_VALUE ? values.vacancyId : null;
 
-      let cvFileId: string | null = null;
-      if (cvFile) {
+      let cvFileId = uploadedCvFileId;
+      if (!cvFileId && cvFile) {
         cvFileId = await uploadCandidateCvFile(cvFile);
       }
 
@@ -149,7 +268,12 @@ export function CreateCandidateSheet({
       if (!contactId) {
         const { data, error } = await supabase
           .from('contacts')
-          .insert({ full_name: values.fullName.trim(), email, phone_e164: phone })
+          .insert({
+            full_name: values.fullName.trim(),
+            email,
+            phone_e164: phone,
+            ...(extractedMeta.location ? { location: extractedMeta.location } : {}),
+          })
           .select('id')
           .single();
         if (error) throw error;
@@ -189,6 +313,9 @@ export function CreateCandidateSheet({
             is_available: true,
             cv_file_id: cvFileId,
             source: targetVacancyId ? values.source : 'manual',
+            ...(extractedMeta.yearsExperience != null
+              ? { years_experience: extractedMeta.yearsExperience }
+              : {}),
           })
           .select('id')
           .single();
@@ -298,6 +425,81 @@ export function CreateCandidateSheet({
             )}
           </div>
 
+          <Field label="CV attachment — attach first to auto-fill (PDF or Word, max 10 MB)">
+            <div
+              className="rounded-control border border-dashed border-border-strong bg-surface-sunken/40 p-3 transition-colors"
+              onDragOver={(e) => {
+                e.preventDefault();
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                const dropped = e.dataTransfer.files?.[0] ?? null;
+                if (dropped) void handleCvSelected(dropped);
+              }}
+            >
+              <input
+                accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                className="sr-only"
+                id="create-candidate-cv-input"
+                onChange={(e) => void handleCvSelected(e.target.files?.[0] ?? null)}
+                ref={fileInputRef}
+                type="file"
+              />
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  disabled={isParsingCv}
+                  onClick={() => fileInputRef.current?.click()}
+                  size="sm"
+                  type="button"
+                  variant="secondary"
+                >
+                  {isParsingCv ? (
+                    <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin text-primary" />
+                  ) : cvFile ? (
+                    <Paperclip className="mr-1.5 h-3.5 w-3.5 text-primary" />
+                  ) : (
+                    <Upload className="mr-1.5 h-3.5 w-3.5 text-primary" />
+                  )}
+                  {isParsingCv ? 'Reading CV…' : cvFile ? 'Replace CV' : 'Attach CV & auto-fill'}
+                </Button>
+                {cvFile ? (
+                  <span className="inline-flex max-w-full items-center gap-1.5 rounded-pill border border-border bg-surface px-2.5 py-1 text-xs text-ink">
+                    <span className="truncate">{cvFile.name}</span>
+                    <button
+                      aria-label="Remove attached CV"
+                      className="text-ink-muted hover:text-ink"
+                      disabled={isParsingCv}
+                      onClick={() => {
+                        void handleCvSelected(null);
+                        if (fileInputRef.current) fileInputRef.current.value = '';
+                      }}
+                      type="button"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-xs text-ink-muted">
+                    <Sparkles className="h-3 w-3 text-primary" />
+                    Drop a CV here to fill name, email, phone, headline &amp; skills automatically
+                  </span>
+                )}
+              </div>
+              {cvParseStatus && (
+                <p
+                  className={
+                    cvParseStatus.tone === 'success'
+                      ? 'mt-2 flex items-center gap-1.5 text-xs text-success'
+                      : 'mt-2 text-xs text-warning'
+                  }
+                >
+                  {cvParseStatus.tone === 'success' && <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />}
+                  {cvParseStatus.message}
+                </p>
+              )}
+            </div>
+          </Field>
+
           <Field error={errors.fullName?.message} label="Full name" required>
             <Input placeholder="Sarah Nakato" {...register('fullName')} />
           </Field>
@@ -313,46 +515,6 @@ export function CreateCandidateSheet({
 
           <Field label="Headline">
             <Input placeholder="HR Assistant / Administrative Officer" {...register('headline')} />
-          </Field>
-
-          <Field label="CV attachment (PDF or Word, max 10 MB)">
-            <div className="flex flex-wrap items-center gap-2">
-              <input
-                accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                className="sr-only"
-                id="create-candidate-cv-input"
-                onChange={(e) => setCvFile(e.target.files?.[0] ?? null)}
-                ref={fileInputRef}
-                type="file"
-              />
-              <Button
-                onClick={() => fileInputRef.current?.click()}
-                size="sm"
-                type="button"
-                variant="secondary"
-              >
-                <Paperclip className="mr-1.5 h-3.5 w-3.5" />
-                {cvFile ? 'Replace CV' : 'Attach CV'}
-              </Button>
-              {cvFile ? (
-                <span className="inline-flex max-w-full items-center gap-1.5 rounded-pill border border-border bg-surface-sunken px-2.5 py-1 text-xs text-ink">
-                  <span className="truncate">{cvFile.name}</span>
-                  <button
-                    aria-label="Remove attached CV"
-                    className="text-ink-muted hover:text-ink"
-                    onClick={() => {
-                      setCvFile(null);
-                      if (fileInputRef.current) fileInputRef.current.value = '';
-                    }}
-                    type="button"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </span>
-              ) : (
-                <span className="text-xs text-ink-muted">Optional</span>
-              )}
-            </div>
           </Field>
 
           <Field label="Skills">
@@ -377,7 +539,7 @@ export function CreateCandidateSheet({
             <Button onClick={() => onOpenChange(false)} type="button" variant="ghost">
               Cancel
             </Button>
-            <Button disabled={isSubmitting} type="submit" variant="primary">
+            <Button disabled={isSubmitting || isParsingCv} type="submit" variant="primary">
               {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {hasSelectedVacancy ? 'Add to vacancy' : 'Add candidate'}
             </Button>

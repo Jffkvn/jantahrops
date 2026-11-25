@@ -431,6 +431,41 @@ export async function uploadCandidateCvFile(file: File): Promise<string> {
   return meta.id;
 }
 
+export interface ExtractedCvProfile {
+  readability: 'clear' | 'partial' | 'unreadable';
+  readability_note: string | null;
+  full_name: string | null;
+  email: string | null;
+  phone: string | null;
+  location: string | null;
+  headline: string | null;
+  skills: string[];
+  years_experience: number | null;
+  summary: string | null;
+}
+
+type ExtractCvProfileResponse = {
+  ok?: boolean;
+  error?: string;
+  profile?: ExtractedCvProfile;
+};
+
+/** Parse an uploaded CV file (`candidate_files.id`) to auto-fill Add Candidate form fields. */
+export async function extractCvProfile(fileId: string): Promise<ExtractedCvProfile> {
+  const supabase = getSupabase();
+  const res = await supabase.functions.invoke<ExtractCvProfileResponse>('evaluate-candidate', {
+    body: { action: 'extract_cv_profile', fileId },
+  });
+  if (res.error) {
+    throw new Error(extractFunctionErrorMessage(res.error, 'Could not read the CV automatically.'));
+  }
+  const payload = res.data;
+  if (!payload?.ok || !payload.profile) {
+    throw new Error(payload?.error ?? 'Could not read the CV automatically.');
+  }
+  return payload.profile;
+}
+
 /** Signed URL for an uploaded document path in the private `candidates` bucket (e.g. cover letter PDF). */
 export async function candidateStorageSignedUrl(
   path: string,
