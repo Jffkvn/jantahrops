@@ -371,6 +371,66 @@ export async function cvSignedUrl(
   return data?.signedUrl ?? null;
 }
 
+const CANDIDATE_CV_MAX_BYTES = 10 * 1024 * 1024; // 10 MB, matches bucket limit
+const CANDIDATE_CV_MIME_BY_EXT: Record<string, string> = {
+  pdf: 'application/pdf',
+  doc: 'application/msword',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+};
+const CANDIDATE_CV_EXT_BY_MIME: Record<string, string> = {
+  'application/pdf': 'pdf',
+  'application/msword': 'doc',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+};
+
+/** Upload a candidate CV (PDF or Word, max 10 MB) to the private `candidates` bucket and record metadata. */
+export async function uploadCandidateCvFile(file: File): Promise<string> {
+  if (file.size > CANDIDATE_CV_MAX_BYTES) {
+    throw new Error('CV files must be 10 MB or smaller.');
+  }
+
+  const nameExt = file.name.split('.').pop()?.toLowerCase() ?? '';
+  const mime =
+    CANDIDATE_CV_EXT_BY_MIME[file.type]
+      ? file.type
+      : (CANDIDATE_CV_MIME_BY_EXT[nameExt] ?? '');
+  const ext = CANDIDATE_CV_EXT_BY_MIME[mime] ?? nameExt;
+
+  if (!mime || !CANDIDATE_CV_MIME_BY_EXT[ext]) {
+    throw new Error('Only PDF or Word (.doc, .docx) CV files are supported.');
+  }
+
+  const supabase = getSupabase();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const path = `manual/${crypto.randomUUID()}.${ext}`;
+
+  const { error: uploadErr } = await supabase.storage.from('candidates').upload(path, file, {
+    contentType: mime,
+    upsert: false,
+  });
+  if (uploadErr) throw new Error(uploadErr.message);
+
+  const { data: meta, error: metaErr } = await supabase
+    .from('candidate_files')
+    .insert({
+      bucket: 'candidates',
+      path,
+      filename: file.name || `cv.${ext}`,
+      mime,
+      size_bytes: file.size,
+      uploaded_by: user?.id ?? null,
+    })
+    .select('id')
+    .single();
+  if (metaErr) {
+    await supabase.storage.from('candidates').remove([path]);
+    throw new Error(metaErr.message);
+  }
+  return meta.id;
+}
+
 /** Signed URL for an uploaded document path in the private `candidates` bucket (e.g. cover letter PDF). */
 export async function candidateStorageSignedUrl(
   path: string,
@@ -636,11 +696,20 @@ export async function addApplicationNote(id: string, body: string): Promise<void
 }
 
 /** Create an application; a duplicate (vacancy, candidate) is a no-op. */
-export async function createApplication(vacancyId: string, candidateId: string): Promise<ApplicationRow | null> {
+export async function createApplication(
+  vacancyId: string,
+  candidateId: string,
+  options: { source?: string | undefined; notes?: string | null | undefined } = {},
+): Promise<ApplicationRow | null> {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from('applications')
-    .insert({ vacancy_id: vacancyId, candidate_id: candidateId, source: 'manual' })
+    .insert({
+      vacancy_id: vacancyId,
+      candidate_id: candidateId,
+      source: options.source ?? 'manual',
+      ...(options.notes ? { notes: options.notes } : {}),
+    })
     .select('*')
     .single();
   if (error) {

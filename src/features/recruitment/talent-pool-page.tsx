@@ -179,7 +179,7 @@ export function TalentPoolPage() {
               </div>
             ) : vacancies.length === 0 ? (
               <div className="px-2 py-3 text-center text-xs text-ink-muted">
-                No open or draft vacancies available.
+                No vacancies available.
               </div>
             ) : (
               vacancies.map((v) => (

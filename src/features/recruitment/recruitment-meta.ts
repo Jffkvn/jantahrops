@@ -58,21 +58,19 @@ export const VACANCY_STATUS_TONES: Record<VacancyStatus, 'neutral' | 'success' |
   closed: 'danger',
 };
 
-const ASSIGNABLE_VACANCY_RANK: Partial<Record<VacancyStatus, number>> = {
+const ASSIGNABLE_VACANCY_RANK: Record<VacancyStatus, number> = {
   open: 0,
   draft: 1,
   paused: 2,
+  closed: 3,
 };
 
-/** Filters out closed vacancies and orders open, then draft, then paused. */
+/** Orders vacancies open -> draft -> paused -> closed so candidates can also be added to closed roles. */
 export function assignableVacancies<T extends { status: VacancyStatus }>(vacancies: readonly T[]): T[] {
   return vacancies
-    .filter((v) => v.status !== 'closed')
     .map((vacancy, index) => ({ vacancy, index }))
     .sort((a, b) => {
-      const rankDiff =
-        (ASSIGNABLE_VACANCY_RANK[a.vacancy.status] ?? 99) -
-        (ASSIGNABLE_VACANCY_RANK[b.vacancy.status] ?? 99);
+      const rankDiff = ASSIGNABLE_VACANCY_RANK[a.vacancy.status] - ASSIGNABLE_VACANCY_RANK[b.vacancy.status];
       return rankDiff !== 0 ? rankDiff : a.index - b.index;
     })
     .map(({ vacancy }) => vacancy);

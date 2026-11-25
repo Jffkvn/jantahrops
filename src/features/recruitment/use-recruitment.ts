@@ -235,12 +235,21 @@ export function useAddApplicationNote(id: string) {
 export function useCreateApplication() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (vars: { vacancyId: string; candidateId: string }) =>
-      createApplication(vars.vacancyId, vars.candidateId),
+    mutationFn: (vars: {
+      vacancyId: string;
+      candidateId: string;
+      source?: string | undefined;
+      notes?: string | null | undefined;
+    }) =>
+      createApplication(vars.vacancyId, vars.candidateId, {
+        source: vars.source,
+        notes: vars.notes,
+      }),
     onSuccess: (_data, vars) => {
       void qc.invalidateQueries({ queryKey: keys.applications(vars.vacancyId) });
       void qc.invalidateQueries({ queryKey: keys.talentPoolMatches(vars.vacancyId) });
       void qc.invalidateQueries({ queryKey: keys.vacancy(vars.vacancyId) });
+      void qc.invalidateQueries({ queryKey: keys.vacanciesPrefix });
       void qc.invalidateQueries({ queryKey: keys.candidatesPrefix });
       void qc.invalidateQueries({ queryKey: keys.candidate(vars.candidateId) });
       void qc.invalidateQueries({ queryKey: keys.candidateApplications(vars.candidateId) });

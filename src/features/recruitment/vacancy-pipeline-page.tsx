@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router';
-import { ArrowLeft, FileText, Pencil, X, LayoutGrid, List, Sparkles, Plus, Star, Scale, Mail, Filter } from 'lucide-react';
+import { ArrowLeft, FileText, Pencil, X, LayoutGrid, List, Sparkles, Plus, Star, Scale, Mail, Filter, UserPlus } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/cn';
 import { PageHeader } from '@/components/page-header';
@@ -23,6 +23,7 @@ import { ApplicationBoard } from './application-board';
 import { ApplicantSiftView } from './applicant-sift-view';
 import { CandidateCompareMatrix } from './candidate-compare-matrix';
 import { CandidateDetailSheet } from './candidate-detail-sheet';
+import { CreateCandidateSheet } from './create-candidate-sheet';
 import { VacancyEditorSheet } from './vacancy-editor-sheet';
 import { MatchBadge } from './match-badge';
 import { parseCvData, sortApplicationsByMatch } from './ai-matching-schema';
@@ -44,6 +45,7 @@ export function VacancyPipelinePage() {
   const publish = usePublishVacancy(vacancyId ?? '');
   const close = useCloseVacancy(vacancyId ?? '');
   const [editorOpen, setEditorOpen] = useState(false);
+  const [createCandidateOpen, setCreateCandidateOpen] = useState(false);
   const [openCandidateId, setOpenCandidateId] = useState<string | null>(null);
   const [view, setView] = useState<'sift' | 'board' | 'table' | 'compare' | 'matches'>('sift');
   const [sortBy, setSortBy] = useState<'match' | 'newest'>('match');
@@ -76,6 +78,10 @@ export function VacancyPipelinePage() {
 
   const actions = (
     <>
+      <Button onClick={() => setCreateCandidateOpen(true)} variant="secondary">
+        <UserPlus className="mr-1.5 h-4 w-4 text-primary" />
+        Add candidate
+      </Button>
       <Button onClick={() => void navigate(`/recruitment/${vacancy.id}/sift-report`)} variant="secondary">
         <FileText className="mr-1.5 h-4 w-4 text-primary" />
         Sift report
@@ -309,6 +315,12 @@ export function VacancyPipelinePage() {
           if (!open) setOpenCandidateId(null);
         }}
         open={openCandidateId != null}
+      />
+
+      <CreateCandidateSheet
+        defaultVacancyId={vacancy.id}
+        onOpenChange={setCreateCandidateOpen}
+        open={createCandidateOpen}
       />
 
       <VacancyEditorSheet

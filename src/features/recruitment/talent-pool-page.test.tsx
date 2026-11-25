@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TalentPoolPage } from './talent-pool-page';
 import { CandidateDetailSheet } from './candidate-detail-sheet';
+import { CreateCandidateSheet } from './create-candidate-sheet';
 import { assignableVacancies, formatAssignableVacancyLabel } from './recruitment-meta';
 import type { VacancyWithRelations } from './recruitment-api';
 import type { VacancyStatus } from '@/types/database';
@@ -84,7 +85,7 @@ function renderWithProviders(ui: React.ReactElement) {
 }
 
 describe('assignableVacancies helpers', () => {
-  it('excludes closed vacancies and sorts open -> draft -> paused', () => {
+  it('orders open -> draft -> paused -> closed and keeps closed roles assignable', () => {
     const input = [
       { id: '1', title: 'Closed Role', status: 'closed' as const },
       { id: '2', title: 'Paused Role', status: 'paused' as const },
@@ -99,12 +100,14 @@ describe('assignableVacancies helpers', () => {
       'Open Role B',
       'Draft Role',
       'Paused Role',
+      'Closed Role',
     ]);
     expect(result.map(formatAssignableVacancyLabel)).toEqual([
       'Open Role A',
       'Open Role B',
       'Draft Role (Draft)',
       'Paused Role (Paused)',
+      'Closed Role (Closed)',
     ]);
   });
 });
@@ -141,7 +144,7 @@ describe('TalentPoolPage search', () => {
     );
   });
 
-  it('loads open, draft, and paused vacancies into the Add to vacancy dropdown and excludes closed', async () => {
+  it('loads open, draft, paused, and closed vacancies into the Add to vacancy dropdown', async () => {
     const user = userEvent.setup();
     mockedVacanciesList.mockReturnValue({
       data: {
@@ -167,13 +170,13 @@ describe('TalentPoolPage search', () => {
     expect(await screen.findByRole('option', { name: 'Senior Accountant' })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: 'Confidential CFO (Draft)' })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: 'Field Tech (Paused)' })).toBeInTheDocument();
-    expect(screen.queryByText(/Archived Role/)).toBeNull();
+    expect(screen.getByRole('option', { name: 'Archived Role (Closed)' })).toBeInTheDocument();
   });
 
-  it('shows a clear empty message when no assignable vacancies exist', async () => {
+  it('shows a clear empty message when no vacancies exist', async () => {
     const user = userEvent.setup();
     mockedVacanciesList.mockReturnValue({
-      data: { rows: [makeVacancy('v-closed', 'Old Role', 'closed')], total: 1 },
+      data: { rows: [], total: 0 },
       isLoading: false,
       isError: false,
     } as unknown as ReturnType<typeof useVacanciesList>);
@@ -183,7 +186,7 @@ describe('TalentPoolPage search', () => {
     const trigger = screen.getByRole('combobox', { name: 'Add to vacancy' });
     await user.click(trigger);
 
-    expect(await screen.findByText('No open or draft vacancies available.')).toBeInTheDocument();
+    expect(await screen.findByText('No vacancies available.')).toBeInTheDocument();
   });
 
   it('dismisses the row Confirm/Cancel controls when Cancel is clicked', async () => {
@@ -312,10 +315,10 @@ describe('CandidateDetailSheet Add to vacancy dropdown', () => {
 
     expect(await screen.findByRole('option', { name: 'HR Manager' })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: 'Payroll Specialist (Draft)' })).toBeInTheDocument();
-    expect(screen.queryByText(/Closed Role/)).toBeNull();
+    expect(screen.getByRole('option', { name: 'Closed Role (Closed)' })).toBeInTheDocument();
   });
 
-  it('shows an empty message when no vacancies are assignable', async () => {
+  it('shows an empty message when no vacancies are available', async () => {
     const user = userEvent.setup();
     mockedVacanciesList.mockReturnValue({
       data: { rows: [], total: 0 },
@@ -330,6 +333,41 @@ describe('CandidateDetailSheet Add to vacancy dropdown', () => {
     const trigger = await screen.findByRole('combobox', { name: 'Choose a vacancy' });
     await user.click(trigger);
 
-    expect(await screen.findByText('No open or draft vacancies available.')).toBeInTheDocument();
+    expect(await screen.findByText('No vacancies available.')).toBeInTheDocument();
+  });
+});
+
+describe('CreateCandidateSheet vacancy & email-application support', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('preselects a closed defaultVacancyId and lists closed vacancies with email source option', async () => {
+    const user = userEvent.setup();
+    mockedVacanciesList.mockReturnValue({
+      data: {
+        rows: [
+          makeVacancy('v-closed', 'HR Assistant', 'closed'),
+          makeVacancy('v-open', 'HR Manager', 'open'),
+        ],
+        total: 2,
+      },
+      isLoading: false,
+      isError: false,
+    } as unknown as ReturnType<typeof useVacanciesList>);
+
+    renderWithProviders(
+      <CreateCandidateSheet defaultVacancyId="v-closed" onOpenChange={() => {}} open />,
+    );
+
+    const vacancyTrigger = await screen.findByRole('combobox', { name: 'Vacancy' });
+    expect(vacancyTrigger).toHaveTextContent('HR Assistant (Closed)');
+
+    const sourceTrigger = screen.getByRole('combobox', { name: 'Application source' });
+    expect(sourceTrigger).toHaveTextContent('Applied by email');
+
+    await user.click(vacancyTrigger);
+    expect(await screen.findByRole('option', { name: 'HR Assistant (Closed)' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'HR Manager' })).toBeInTheDocument();
   });
 });
