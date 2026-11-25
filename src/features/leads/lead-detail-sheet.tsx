@@ -23,6 +23,7 @@ import type { LeadStage } from '@/types/database';
 import { DangerZone } from '@/features/privacy/danger-zone';
 import { DeleteLeadDialog } from '@/features/privacy/delete-lead-dialog';
 import { ErasePersonDialog } from '@/features/privacy/erase-person-dialog';
+import { AddContactToVacancySection } from '@/features/recruitment/add-to-vacancy-section';
 
 export function LeadDetailSheet({
   leadId,
@@ -186,6 +187,14 @@ function LeadDetailBody({ leadId, onClose }: { leadId: string; onClose: () => vo
               </SelectContent>
             </Select>
           </div>
+
+          {/* Add to a vacancy (including closed roles) */}
+          {contact && (
+            <AddContactToVacancySection
+              contactId={contact.id}
+              source={lead.source ?? 'lead'}
+            />
+          )}
 
           {/* Facts */}
           <div className="grid grid-cols-2 gap-x-4 gap-y-3 border-b border-border p-6 text-sm">

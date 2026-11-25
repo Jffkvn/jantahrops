@@ -15,6 +15,7 @@ import {
   updateCandidate,
   moveStage,
   addApplicationNote,
+  addContactToVacancy,
   createApplication,
   scheduleInterview,
   recordInterviewFeedback,
@@ -253,6 +254,24 @@ export function useCreateApplication() {
       void qc.invalidateQueries({ queryKey: keys.candidatesPrefix });
       void qc.invalidateQueries({ queryKey: keys.candidate(vars.candidateId) });
       void qc.invalidateQueries({ queryKey: keys.candidateApplications(vars.candidateId) });
+    },
+  });
+}
+
+export function useAddContactToVacancy() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: {
+      contactId: string;
+      vacancyId: string;
+      source?: string | undefined;
+      notes?: string | null | undefined;
+    }) => addContactToVacancy(vars),
+    onSuccess: (_data, vars) => {
+      void qc.invalidateQueries({ queryKey: keys.all });
+      void qc.invalidateQueries({ queryKey: ['directory', 'footprint', vars.contactId] });
+      void qc.invalidateQueries({ queryKey: ['directory'] });
+      void qc.invalidateQueries({ queryKey: ['leads'] });
     },
   });
 }

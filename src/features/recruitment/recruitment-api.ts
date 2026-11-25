@@ -719,6 +719,55 @@ export async function createApplication(
   return data;
 }
 
+/**
+ * Ensure a contact has a candidate profile and add them to a vacancy
+ * (works for open, draft, paused, and closed vacancies).
+ */
+export async function addContactToVacancy(input: {
+  contactId: string;
+  vacancyId: string;
+  source?: string | undefined;
+  notes?: string | null | undefined;
+}): Promise<{ application: ApplicationRow | null; candidateId: string }> {
+  const supabase = getSupabase();
+
+  await supabase.from('contact_roles').upsert({ contact_id: input.contactId, role: 'candidate' });
+
+  const { data: existingCandidate, error: lookupErr } = await supabase
+    .from('candidates')
+    .select('id')
+    .eq('contact_id', input.contactId)
+    .maybeSingle();
+  if (lookupErr) throw lookupErr;
+
+  let candidateId = existingCandidate?.id ?? null;
+  if (!candidateId) {
+    const { data: createdCandidate, error: createErr } = await supabase
+      .from('candidates')
+      .insert({
+        contact_id: input.contactId,
+        is_available: true,
+        source: input.source ?? 'manual',
+        notes: input.notes ?? null,
+      })
+      .select('id')
+      .single();
+    if (createErr) throw createErr;
+    candidateId = createdCandidate.id;
+  }
+
+  const application = await createApplication(input.vacancyId, candidateId, {
+    source: input.source,
+    notes: input.notes,
+  });
+
+  if (application) {
+    void evaluateApplicationWithAi(application.id).catch(() => {});
+  }
+
+  return { application, candidateId };
+}
+
 export async function getApplicationTimeline(id: string): Promise<ActivityRow[]> {
   const supabase = getSupabase();
   const { data, error } = await supabase

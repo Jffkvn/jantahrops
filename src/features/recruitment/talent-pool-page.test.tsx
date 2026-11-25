@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TalentPoolPage } from './talent-pool-page';
 import { CandidateDetailSheet } from './candidate-detail-sheet';
 import { CreateCandidateSheet } from './create-candidate-sheet';
+import { AddContactToVacancySection } from './add-to-vacancy-section';
 import { assignableVacancies, formatAssignableVacancyLabel } from './recruitment-meta';
 import type { VacancyWithRelations } from './recruitment-api';
 import type { VacancyStatus } from '@/types/database';
@@ -30,6 +31,7 @@ vi.mock('./use-recruitment', () => ({
   useCandidateApplications: vi.fn(() => ({ data: [] })),
   useCandidateTimeline: vi.fn(() => ({ data: [] })),
   useCreateApplication: vi.fn(() => ({ mutateAsync: vi.fn(), isPending: false })),
+  useAddContactToVacancy: vi.fn(() => ({ mutateAsync: vi.fn(), isPending: false })),
   useUpdateCandidate: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
   useParseCandidateCv: vi.fn(() => ({ mutateAsync: vi.fn(), isPending: false })),
   useDistinctSkills: vi.fn(() => ({ data: [] })),
@@ -37,6 +39,7 @@ vi.mock('./use-recruitment', () => ({
 }));
 
 import {
+  useAddContactToVacancy,
   useCandidate,
   useCandidatesList,
   useVacanciesList,
@@ -45,6 +48,7 @@ import {
 const mockedList = vi.mocked(useCandidatesList);
 const mockedCandidate = vi.mocked(useCandidate);
 const mockedVacanciesList = vi.mocked(useVacanciesList);
+const mockedAddContactToVacancy = vi.mocked(useAddContactToVacancy);
 
 function makeVacancy(id: string, title: string, status: VacancyStatus): VacancyWithRelations {
   return {
@@ -369,5 +373,46 @@ describe('CreateCandidateSheet vacancy & email-application support', () => {
     await user.click(vacancyTrigger);
     expect(await screen.findByRole('option', { name: 'HR Assistant (Closed)' })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: 'HR Manager' })).toBeInTheDocument();
+  });
+});
+
+describe('AddContactToVacancySection (Lead & Contact profiles)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('allows adding a lead/contact directly to a closed vacancy', async () => {
+    const user = userEvent.setup();
+    const mutateAsync = vi.fn().mockResolvedValue({ application: { id: 'app-1' }, candidateId: 'cand-1' });
+    mockedAddContactToVacancy.mockReturnValue({
+      mutateAsync,
+      isPending: false,
+    } as unknown as ReturnType<typeof useAddContactToVacancy>);
+    mockedVacanciesList.mockReturnValue({
+      data: {
+        rows: [makeVacancy('v-closed', 'HR Assistant', 'closed')],
+        total: 1,
+      },
+      isLoading: false,
+      isError: false,
+    } as unknown as ReturnType<typeof useVacanciesList>);
+
+    renderWithProviders(
+      <AddContactToVacancySection contactId="contact-99" source="website" />,
+    );
+
+    const trigger = screen.getByRole('combobox', { name: 'Choose a vacancy' });
+    await user.click(trigger);
+    await user.click(await screen.findByRole('option', { name: 'HR Assistant (Closed)' }));
+
+    await user.click(screen.getByRole('button', { name: 'Add' }));
+    await waitFor(() => {
+      expect(mutateAsync).toHaveBeenCalledWith({
+        contactId: 'contact-99',
+        vacancyId: 'v-closed',
+        source: 'website',
+        notes: undefined,
+      });
+    });
   });
 });

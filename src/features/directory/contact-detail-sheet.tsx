@@ -20,6 +20,7 @@ import {
 } from './use-directory';
 import { DangerZone } from '@/features/privacy/danger-zone';
 import { ErasePersonDialog } from '@/features/privacy/erase-person-dialog';
+import { AddContactToVacancySection } from '@/features/recruitment/add-to-vacancy-section';
 
 export function ContactDetailSheet({
   contactId,
@@ -247,10 +248,15 @@ function Body({ contactId, onClose }: { contactId: string; onClose: () => void }
           </div>
         </div>
 
-        {/* Right / Sidebar column: Facts & DangerZone */}
+        {/* Right / Sidebar column: Add to vacancy, Facts & DangerZone */}
         <div className="bg-surface-sunken/20 lg:col-span-5">
+          <AddContactToVacancySection
+            contactId={contact.id}
+            source={contact.source ?? 'manual'}
+          />
+
           {/* Facts */}
-          <div className="grid grid-cols-2 gap-x-4 gap-y-3 p-6 text-sm">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-3 border-b border-border p-6 text-sm">
             {contact.email && <Fact label="Email">{contact.email}</Fact>}
             {contact.phone_e164 && <Fact label="Phone">{formatPhoneDisplay(contact.phone_e164)}</Fact>}
             {contact.location && <Fact label="Location">{contact.location}</Fact>}
